@@ -116,7 +116,10 @@ jobs:
         run: chmod +x npm/bin/linux-x64/* npm/bin/darwin-x64/* npm/bin/darwin-arm64/*
       - name: Build npm package
         working-directory: npm
-        run: npm install && npm run build
+        run: |
+          rm -f package-lock.json
+          npm cache clean --force
+          npm install && npm run build
       - name: Publish (First time, using token)
         working-directory: npm
         run: npm publish --access public
