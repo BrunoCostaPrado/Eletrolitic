@@ -35,6 +35,5 @@ info.txt
 .graphifyignore
 
 # Test
-test/
-
+test
 docs

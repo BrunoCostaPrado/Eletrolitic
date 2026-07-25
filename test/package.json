@@ -1,0 +1,18 @@
+{
+	"name": "test",
+	"version": "1.0.0",
+	"description": "Manual test project for ferrite",
+	"type": "module",
+	"scripts": {
+		"build": "ferrite build",
+		"dev": "tsx src/index.ts",
+		"lint": "biome check --write ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.4",
+		"@types/node": "^26.1.1",
+		"ferrite": "workspace:..",
+		"tsx": "^4.19.0",
+		"zod": "^4.4.3"
+	}
+}
