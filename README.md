@@ -74,10 +74,27 @@ All fields are optional. Without a config file, ferrite compiles the file you pa
 | `jsx` | `string` | — | JSX transform (`react`, `react-jsx`) |
 | `paths` | `Record<string, string[]>` | — | Path aliases (reads from `tsconfig.json`) |
 | `baseUrl` | `string` | — | Base URL for path resolution |
+| `minify` | `boolean` | `false` | Strip whitespace and comments from output |
+| `format` | `string` | `"esm"` | Module format (`esm` or `cjs`) |
 
 ### tsconfig.json
 
 Ferrite walks up the directory tree looking for `tsconfig.json`. It strips comments (JSONC format), reads `compilerOptions`, and resolves path aliases. You can point to a specific file with `--tsconfig`.
+
+## Features
+
+- TypeScript → JavaScript compilation (strip types, enums, decorators)
+- JSX → `React.createElement()` transform
+- ES modules (`import`/`export`, `export * from`) and CommonJS output
+- Dynamic `import()` expressions
+- Source maps with multi-file support
+- Declaration files (`.d.ts`)
+- Path aliases from tsconfig.json
+- Utility types: `Partial<T>`, `Omit<K,T>`
+- Compound assignments: `??=`, `&&=`, `||=`, `^=`
+- Minification (`minify: true` in config)
+- Multi-error recovery per file
+- npm binary packaging (macOS, Linux, Windows)
 
 ## Output
 
@@ -110,7 +127,7 @@ export default function hello(): string {
 ## Test
 
 ```bash
-cargo test          # unit + stress tests
+cargo test          # 698 tests (unit + stress)
 cargo clippy        # lint
 ```
 
