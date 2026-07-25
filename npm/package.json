@@ -1,15 +1,31 @@
 {
 	"name": "@redbruno/eletrolitic",
-	"version": "0.1.0",
+	"version": "0.1.2",
 	"description": "TypeScript compiler powered by Rust",
-	"main": "dist/ferrite.mjs",
-	"types": "dist/ferrite.d.mts",
+	"keywords": [
+		"typescript",
+		"compiler",
+		"rust"
+	],
+	"homepage": "https://github.com/BrunoCostaPrado/Ferrite#readme",
+	"bugs": {
+		"url": "https://github.com/BrunoCostaPrado/Ferrite/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/BrunoCostaPrado/Ferrite.git"
+	},
+	"license": "ISC",
+	"author": "RedBruno",
+	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/ferrite.d.mts",
-			"default": "./dist/ferrite.mjs"
+			"types": "./dist/eletrolitic.d.mts",
+			"default": "./dist/eletrolitic.mjs"
 		}
 	},
+	"main": "dist/eletrolitic.mjs",
+	"types": "dist/eletrolitic.d.mts",
 	"bin": {
 		"eletrolitic": "bin/eletrolitic.cjs"
 	},
@@ -17,34 +33,22 @@
 		"dist/**/*",
 		"bin/**/*"
 	],
-	"engines": {
-		"node": ">=16"
-	},
 	"scripts": {
 		"build": "tsdown",
 		"lint": "biome check --write .",
 		"typecheck": "tsc --noEmit"
 	},
-	"keywords": [
-		"typescript",
-		"compiler",
-		"rust"
-	],
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/BrunoCostaPrado/Basalt.git"
-	},
-	"publishConfig": {
-		"access": "public",
-		"provenance": true
-	},
-	"author": "",
-	"license": "ISC",
-	"type": "module",
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.5",
 		"@types/node": "^26.1.1",
 		"tsdown": "^0.22.13",
 		"typescript": "^5.7.3"
+	},
+	"engines": {
+		"node": ">=16"
+	},
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
 	}
 }

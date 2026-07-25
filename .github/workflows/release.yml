@@ -1,5 +1,24 @@
 name: Release
 
+# ================================================================
+# TRUSTED PUBLISHING SETUP
+# 
+# This workflow publishes to npm using GitHub OIDC authentication.
+# For trusted publishing to work, you MUST configure it on npmjs.com:
+#   1. Go to: https://www.npmjs.com/package/eletrolitic/settings/manage
+#   2. Edit "Trusted Publisher" → Add publisher:
+#      Provider: GitHub
+#      Repository: BrunoCostaPrado/eletrolitic
+#      Workflow filename: release.yml
+#      Accept publishing: checked
+#   3. Save the configuration
+# 
+# Key requirements for this workflow:
+#   • permissions: { id-token: write, attestations: write } 
+#   • Must run on GitHub-hosted runners (not self-hosted)
+#   • publishes with: npm publish --provenance --access public
+# ================================================================
+
 on:
   push:
     tags: ["v*"]
@@ -98,6 +117,8 @@ jobs:
       - name: Build npm package
         working-directory: npm
         run: npm install && npm run build
-      - name: Publish (OIDC — no token needed)
+      - name: Publish (First time, using token)
         working-directory: npm
-        run: npm publish --provenance --access public
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
