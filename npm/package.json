@@ -1,6 +1,6 @@
 {
 	"name": "@redbruno/eletrolitic",
-	"version": "0.1.2",
+	"version": "0.1.0",
 	"description": "TypeScript compiler powered by Rust",
 	"keywords": [
 		"typescript",
