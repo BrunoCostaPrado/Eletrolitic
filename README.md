@@ -29,6 +29,18 @@ ferrite compile        # alias
 ferrite                # uses entry from config
 ```
 
+### CLI flags
+
+| Flag | Description |
+|------|-------------|
+| `--tsconfig <path>` | Path to tsconfig.json |
+| `--outDir <dir>` | Output directory |
+| `--noEmit` | Type-check only, no output |
+| `--target <target>` | ES target (es2015–esnext) |
+| `--strict` | Enable strict mode |
+| `--help`, `-h` | Show help |
+| `--version`, `-V` | Show version |
+
 ## Config
 
 Create `ferrite.config.ts` in your project root:
