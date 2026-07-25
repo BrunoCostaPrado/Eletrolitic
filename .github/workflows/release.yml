@@ -116,12 +116,7 @@ jobs:
         run: chmod +x npm/bin/linux-x64/* npm/bin/darwin-x64/* npm/bin/darwin-arm64/*
       - name: Build npm package
         working-directory: npm
-        run: |
-          rm -f package-lock.json
-          npm cache clean --force
-          npm install && npm run build
-      - name: Publish (First time, using token)
+        run: npm install && npm run build
+      - name: Publish (OIDC — no token needed)
         working-directory: npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
