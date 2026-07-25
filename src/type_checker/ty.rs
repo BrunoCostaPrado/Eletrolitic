@@ -22,6 +22,7 @@ pub enum Type {
   Map { key: Box<Type>, value: Box<Type> },
   Set { value: Box<Type> },
   Tuple(Vec<Type>),
+  Optional(Box<Type>),
   Enum { name: String, members: Vec<(String, Type)> },
 }
 
@@ -58,11 +59,26 @@ impl Type {
       (_, Type::Union(types)) => types.iter().any(|t| self.is_assignable_to(t)),
       (Type::Array(a), Type::Array(b)) => a.is_assignable_to(b),
       (Type::Object { fields: a }, Type::Object { fields: b }) => {
-        // structural: a must have all fields of b with assignable types
+        // structural: a must have all required fields of b with assignable types;
+        // optional fields in b may be missing from a
         b.iter().all(|(bname, btype)| {
-          a.iter()
-            .find(|(aname, _)| aname == bname)
-            .is_some_and(|(_, atype)| atype.is_assignable_to(btype))
+          let (bcore, is_optional) = match btype {
+            Type::Optional(inner) => (inner.as_ref(), true),
+            other => (other, false),
+          };
+          if let Some((_, atype)) = a.iter().find(|(aname, _)| aname == bname) {
+            let acore = match atype {
+              Type::Optional(inner) => inner.as_ref(),
+              other => other,
+            };
+            if is_optional {
+              acore.is_assignable_to(bcore) || matches!(acore, Type::Undefined)
+            } else {
+              acore.is_assignable_to(bcore)
+            }
+          } else {
+            is_optional
+          }
         })
       }
       (Type::Null, Type::Undefined) => true,
@@ -133,7 +149,10 @@ impl std::fmt::Display for Type {
           if i > 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{name}: {ty}")?;
+          match ty {
+            Type::Optional(inner) => write!(f, "{name}?: {inner}")?,
+            _ => write!(f, "{name}: {ty}")?,
+          }
         }
         write!(f, " }}")
       }
@@ -156,6 +175,7 @@ impl std::fmt::Display for Type {
         }
         write!(f, "]")
       }
+      Type::Optional(inner) => write!(f, "{inner}?"),
       Type::Enum { name, .. } => write!(f, "{name}"),
     }
   }

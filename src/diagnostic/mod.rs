@@ -72,19 +72,22 @@ impl SourceFile {
     let mut out = format!("error[{code}]: {message}");
 
     // Location: --> file:line:col
-    let _ = write!(out, "\n --> {}:{start_line}:{start_col}", self.path);
+    let _ = write!(out, "\n  --> {}:{start_line}:{start_col}", self.path);
 
-    // Source line
-    let gutter = format!("{start_line:>4} | ");
+    // Separator line
+    let _ = write!(out, "\n   |");
+
+    // Source line with line number
+    let gutter = format!(" {} | ", start_line);
     let _ = write!(out, "\n{gutter}{text}");
 
     // Caret line — underline the span on the error line
     let caret_col = start_col.saturating_sub(1); // 0-based offset into text
     let caret_len =
       if end_line == start_line && end_col > start_col { (end_col - start_col).max(1) } else { 1 };
-    let spaces = " ".repeat(gutter.len() + caret_col);
+    let prefix = " ".repeat(gutter.len());
     let carets = "^".repeat(caret_len);
-    let _ = write!(out, "\n{spaces}{carets}");
+    let _ = write!(out, "\n{prefix}{carets}");
 
     out
   }

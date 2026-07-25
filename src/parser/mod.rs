@@ -43,6 +43,34 @@ impl Parser {
           self.advance();
           return;
         }
+        // Stop syncing when we see a token that can start a statement —
+        // let the main loop try to parse it instead of skipping over it.
+        TokenKind::Let
+        | TokenKind::Var
+        | TokenKind::Const
+        | TokenKind::If
+        | TokenKind::While
+        | TokenKind::For
+        | TokenKind::Return
+        | TokenKind::Function
+        | TokenKind::OpenBrace
+        | TokenKind::Import
+        | TokenKind::Type
+        | TokenKind::Export
+        | TokenKind::Switch
+        | TokenKind::Throw
+        | TokenKind::Try
+        | TokenKind::Break
+        | TokenKind::Continue
+        | TokenKind::Do
+        | TokenKind::Class
+        | TokenKind::Enum
+        | TokenKind::Interface
+        | TokenKind::Async
+        | TokenKind::Declare
+        | TokenKind::At => {
+          return;
+        }
         _ => {
           self.advance();
         }
@@ -908,8 +936,12 @@ const a: S = "Hello"
     match &prog.body[0] {
       Statement::ForInOfStatement { kind, left, is_of, .. } => {
         assert_eq!(*kind, VariableKind::Let);
-        assert_eq!(left, "x");
         assert!(*is_of);
+        if let Expression::Identifier { name, .. } = left {
+          assert_eq!(name, "x");
+        } else {
+          panic!("expected identifier");
+        }
       }
       _ => panic!("expected for-of"),
     }
@@ -921,8 +953,12 @@ const a: S = "Hello"
     match &prog.body[0] {
       Statement::ForInOfStatement { kind, left, is_of, .. } => {
         assert_eq!(*kind, VariableKind::Var);
-        assert_eq!(left, "x");
         assert!(!*is_of);
+        if let Expression::Identifier { name, .. } = left {
+          assert_eq!(name, "x");
+        } else {
+          panic!("expected identifier");
+        }
       }
       _ => panic!("expected for-in"),
     }
@@ -933,7 +969,11 @@ const a: S = "Hello"
     let prog = parse("for (x of arr) { x; }");
     match &prog.body[0] {
       Statement::ForInOfStatement { kind, left, .. } => {
-        assert_eq!(left, "x");
+        if let Expression::Identifier { name, .. } = left {
+          assert_eq!(name, "x");
+        } else {
+          panic!("expected identifier");
+        }
         assert_eq!(*kind, VariableKind::Var);
       }
       _ => panic!("expected for-of"),
@@ -983,7 +1023,7 @@ const a: S = "Hello"
       Statement::TryStatement { handler, finalizer, .. } => {
         assert!(handler.is_some());
         assert!(finalizer.is_none());
-        assert_eq!(handler.as_ref().unwrap().param, "e");
+        assert_eq!(handler.as_ref().unwrap().param.as_deref(), Some("e"));
       }
       _ => panic!("expected try"),
     }
@@ -1019,7 +1059,7 @@ const a: S = "Hello"
     match &prog.body[0] {
       Statement::TryStatement { handler, .. } => {
         let h = handler.as_ref().expect("handler");
-        assert_eq!(h.param, "e");
+        assert_eq!(h.param.as_deref(), Some("e"));
         assert!(h.type_ann.is_some());
       }
       _ => panic!("expected try"),

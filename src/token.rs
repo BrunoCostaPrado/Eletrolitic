@@ -69,6 +69,11 @@ pub enum TokenKind {
   Public,
   Private,
   Protected,
+  Satisfies,
+  Meta,
+  Declare,
+  Module,
+  Readonly,
 
   // Operators (ordered by precedence in comments)
   // 1: ??
@@ -125,6 +130,10 @@ pub enum TokenKind {
   PercentEq,
   AmpEq,
   PipeEq,
+  QuestionQuestionEq,
+  AmpAmpEq,
+  PipePipeEq,
+  CaretEq,
 
   // Punctuation
   OpenParen,
@@ -146,6 +155,9 @@ pub enum TokenKind {
   TemplateHead(String),
   TemplateMiddle(String),
   TemplateTail(String),
+
+  // Decorators
+  At,
 
   // Special
   Unknown(char),
@@ -219,6 +231,11 @@ impl fmt::Display for TokenKind {
       TokenKind::Public => write!(f, "public"),
       TokenKind::Private => write!(f, "private"),
       TokenKind::Protected => write!(f, "protected"),
+      TokenKind::Satisfies => write!(f, "satisfies"),
+      TokenKind::Meta => write!(f, "meta"),
+      TokenKind::Declare => write!(f, "declare"),
+      TokenKind::Module => write!(f, "module"),
+      TokenKind::Readonly => write!(f, "readonly"),
       TokenKind::QuestionQuestion => write!(f, "??"),
       TokenKind::QuestionDot => write!(f, "?."),
       TokenKind::PipePipe => write!(f, "||"),
@@ -255,6 +272,10 @@ impl fmt::Display for TokenKind {
       TokenKind::PercentEq => write!(f, "%="),
       TokenKind::AmpEq => write!(f, "&="),
       TokenKind::PipeEq => write!(f, "|="),
+      TokenKind::QuestionQuestionEq => write!(f, "??="),
+      TokenKind::AmpAmpEq => write!(f, "&&="),
+      TokenKind::PipePipeEq => write!(f, "||="),
+      TokenKind::CaretEq => write!(f, "^="),
       TokenKind::OpenParen => write!(f, "("),
       TokenKind::CloseParen => write!(f, ")"),
       TokenKind::OpenBracket => write!(f, "["),
@@ -272,8 +293,62 @@ impl fmt::Display for TokenKind {
       TokenKind::TemplateHead(s) => write!(f, "`{s} ${{"),
       TokenKind::TemplateMiddle(s) => write!(f, "}} {s} ${{"),
       TokenKind::TemplateTail(s) => write!(f, "}} {s}`"),
+      TokenKind::At => write!(f, "@"),
       TokenKind::Unknown(c) => write!(f, "unknown char '{c}'"),
       TokenKind::Eof => write!(f, "EOF"),
     }
+  }
+}
+
+impl TokenKind {
+  /// True for keywords that can appear as property keys in object literals: `{ class: 1 }`.
+  pub fn is_reserved_for_property_key(&self) -> bool {
+    matches!(
+      self,
+      TokenKind::If
+        | TokenKind::Else
+        | TokenKind::Return
+        | TokenKind::Function
+        | TokenKind::Class
+        | TokenKind::New
+        | TokenKind::Delete
+        | TokenKind::TypeOf
+        | TokenKind::Void
+        | TokenKind::Instanceof
+        | TokenKind::In
+        | TokenKind::Of
+        | TokenKind::Import
+        | TokenKind::Export
+        | TokenKind::Default
+        | TokenKind::Switch
+        | TokenKind::Case
+        | TokenKind::This
+        | TokenKind::Super
+        | TokenKind::Extends
+        | TokenKind::Static
+        | TokenKind::Throw
+        | TokenKind::Try
+        | TokenKind::Catch
+        | TokenKind::Finally
+        | TokenKind::For
+        | TokenKind::While
+        | TokenKind::Do
+        | TokenKind::Break
+        | TokenKind::Continue
+        | TokenKind::Async
+        | TokenKind::Await
+        | TokenKind::Let
+        | TokenKind::Const
+        | TokenKind::Var
+        | TokenKind::Type
+        | TokenKind::Enum
+        | TokenKind::Interface
+        | TokenKind::Declare
+        | TokenKind::Module
+        | TokenKind::As
+        | TokenKind::From
+        | TokenKind::Readonly
+        | TokenKind::Satisfies
+    )
   }
 }

@@ -5,11 +5,24 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test
+
   build:
+    needs: test
     strategy:
       matrix:
         include:
@@ -33,16 +46,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Strip debug symbols
+        if: runner.os != 'Windows'
+        run: strip target/${{ matrix.target }}/release/${{ matrix.bin }}
+      - uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.platform }}
           path: target/${{ matrix.target }}/release/${{ matrix.bin }}
@@ -56,38 +70,32 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
-
-      - name: Download all binaries
-        uses: actions/download-artifact@v4
+      # Download each platform binary into its own subdir
+      - uses: actions/download-artifact@v4
         with:
-          path: npm/bin
-          pattern: binary-*
-          merge-multiple: true
-
-      - name: Organize binaries
-        run: |
-          mkdir -p npm/bin/linux-x64 npm/bin/darwin-x64 npm/bin/darwin-arm64 npm/bin/win32-x64
-          find npm/bin -type f | head -20
-          # artifacts download to flat dir — move to platform dirs
-          for dir in npm/bin/binary-*/; do
-            platform=$(basename "$dir" | sed 's/binary-//')
-            mv "$dir"* "npm/bin/$platform/" 2>/dev/null || true
-            rmdir "$dir" 2>/dev/null || true
-          done
-          chmod +x npm/bin/linux-x64/* npm/bin/darwin-x64/* npm/bin/darwin-arm64/* 2>/dev/null || true
-          ls -R npm/bin/
-
+          name: binary-linux-x64
+          path: npm/bin/linux-x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary-darwin-x64
+          path: npm/bin/darwin-x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary-darwin-arm64
+          path: npm/bin/darwin-arm64
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary-win32-x64
+          path: npm/bin/win32-x64
+      - name: Ensure binaries are executable
+        run: chmod +x npm/bin/linux-x64/* npm/bin/darwin-x64/* npm/bin/darwin-arm64/*
       - name: Build npm package
         working-directory: npm
-        run: |
-          npm install
-          npm run build
-
+        run: npm install && npm run build
       - name: Publish
         working-directory: npm
         run: npm publish --provenance

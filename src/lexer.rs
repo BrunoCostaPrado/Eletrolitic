@@ -132,7 +132,12 @@ impl<'a> Lexer<'a> {
       '?' => {
         if self.peek() == '?' {
           self.advance();
-          self.add_token(TokenKind::QuestionQuestion);
+          if self.peek() == '=' {
+            self.advance();
+            self.add_token(TokenKind::QuestionQuestionEq);
+          } else {
+            self.add_token(TokenKind::QuestionQuestion);
+          }
         } else if self.peek() == '.' {
           self.advance();
           self.add_token(TokenKind::QuestionDot);
@@ -278,7 +283,12 @@ impl<'a> Lexer<'a> {
       '&' => {
         if self.peek() == '&' {
           self.advance();
-          self.add_token(TokenKind::AmpAmp);
+          if self.peek() == '=' {
+            self.advance();
+            self.add_token(TokenKind::AmpAmpEq);
+          } else {
+            self.add_token(TokenKind::AmpAmp);
+          }
         } else if self.peek() == '=' {
           self.advance();
           self.add_token(TokenKind::AmpEq);
@@ -289,7 +299,12 @@ impl<'a> Lexer<'a> {
       '|' => {
         if self.peek() == '|' {
           self.advance();
-          self.add_token(TokenKind::PipePipe);
+          if self.peek() == '=' {
+            self.advance();
+            self.add_token(TokenKind::PipePipeEq);
+          } else {
+            self.add_token(TokenKind::PipePipe);
+          }
         } else if self.peek() == '=' {
           self.advance();
           self.add_token(TokenKind::PipeEq);
@@ -297,7 +312,14 @@ impl<'a> Lexer<'a> {
           self.add_token(TokenKind::Pipe);
         }
       }
-      '^' => self.add_token(TokenKind::Caret),
+      '^' => {
+        if self.peek() == '=' {
+          self.advance();
+          self.add_token(TokenKind::CaretEq);
+        } else {
+          self.add_token(TokenKind::Caret);
+        }
+      }
       '~' => self.add_token(TokenKind::Tilde),
       '"' | '\'' => self.string(c),
       '`' => {
@@ -314,6 +336,7 @@ impl<'a> Lexer<'a> {
       }
       c if c.is_ascii_digit() => self.number(),
       c if c.is_ascii_alphabetic() || c == '_' || c == '$' => self.identifier(),
+      '@' => self.add_token(TokenKind::At),
       c if c.is_whitespace() => {}
       _ => {
         let span = Span::new(self.start, self.current);
@@ -429,6 +452,11 @@ impl<'a> Lexer<'a> {
       "public" => TokenKind::Public,
       "private" => TokenKind::Private,
       "protected" => TokenKind::Protected,
+      "satisfies" => TokenKind::Satisfies,
+      "meta" => TokenKind::Meta,
+      "declare" => TokenKind::Declare,
+      "module" => TokenKind::Module,
+      "readonly" => TokenKind::Readonly,
       _ => TokenKind::Identifier(word.to_string()),
     };
     self.add_token(kind);
@@ -653,7 +681,7 @@ mod tests {
 
   #[test]
   fn unknown_char_produces_diagnostic() {
-    let mut lexer = Lexer::new("@");
+    let mut lexer = Lexer::new("#");
     lexer.tokenize();
     let diags = lexer.into_diagnostics();
     assert_eq!(diags.len(), 1);
@@ -662,9 +690,9 @@ mod tests {
 
   #[test]
   fn unknown_char_produces_token() {
-    let mut lexer = Lexer::new("@");
+    let mut lexer = Lexer::new("#");
     let tokens = lexer.tokenize().to_vec();
-    assert!(matches!(tokens[0].kind, TokenKind::Unknown('@')));
+    assert!(matches!(tokens[0].kind, TokenKind::Unknown('#')));
   }
 
   #[test]

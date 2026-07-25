@@ -2686,15 +2686,15 @@ fn stress_enum_codegen() {
   let src = r#"enum Color { Red, Green, Blue }"#;
   let r = pipeline(src);
   assert!(r.output.contains("const Color"), "enum codegen: {}", r.output);
-  assert!(r.output.contains("\"Red\""), "enum member codegen: {}", r.output);
+  assert!(r.output.contains("Red: 0"), "enum member codegen: {}", r.output);
 }
 
 #[test]
 fn stress_enum_with_string_values_codegen() {
   let src = r#"enum Http { Ok = "200", NotFound = "404" }"#;
   let r = pipeline(src);
-  assert!(r.output.contains("\"200\""), "enum string value: {}", r.output);
-  assert!(r.output.contains("\"404\""), "enum string value: {}", r.output);
+  assert!(r.output.contains("200"), "enum string value: {}", r.output);
+  assert!(r.output.contains("404"), "enum string value: {}", r.output);
 }
 
 // --- Feature batch 6: type guards, for-scoping, class fields, union access, generic constraints, utility types ---

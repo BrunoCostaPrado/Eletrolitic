@@ -189,7 +189,10 @@ pub fn load_ferrite_config(dir: &Path) -> Option<(FerriteConfig, PathBuf)> {
         content
       } else {
         // Extract defineConfig({...}) body from TS/JS
-        extract_define_config(&content)?
+        match extract_define_config(&content) {
+          Some(j) => j,
+          None => continue,
+        }
       };
       if let Ok(cfg) = serde_json::from_str::<FerriteConfig>(&json) {
         return Some((cfg, dir.to_path_buf()));
@@ -214,7 +217,12 @@ fn extract_define_config(content: &str) -> Option<String> {
       b'}' => {
         depth -= 1;
         if depth == 0 {
-          let body = &content[start..start + i];
+          let mut end = start + i;
+          // Skip trailing `)` from `defineConfig({...})`
+          if end > start && content.as_bytes().get(end - 1) == Some(&b')') {
+            end -= 1;
+          }
+          let body = &content[start..end];
           // Quote unquoted keys, wrap in {}, strip trailing commas
           let quoted = quote_keys(body);
           // Remove trailing commas before } or newline
@@ -231,11 +239,22 @@ fn extract_define_config(content: &str) -> Option<String> {
 /// Remove trailing commas before `}` or at end of string.
 fn strip_trailing_commas(s: &str) -> String {
   let mut out = s.to_string();
-  // Remove ",}" → "}"
-  while let Some(pos) = out.find(",}") {
-    out.replace_range(pos..pos + 2, "}");
+  let bytes = out.as_bytes();
+  let mut removes = Vec::new();
+  for i in 0..bytes.len() {
+    if bytes[i] == b',' {
+      let mut j = i + 1;
+      while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+        j += 1;
+      }
+      if j < bytes.len() && bytes[j] == b'}' {
+        removes.push(i);
+      }
+    }
   }
-  // Remove trailing ",\n" or ","
+  for &pos in removes.iter().rev() {
+    out.remove(pos);
+  }
   let trimmed = out.trim_end();
   if trimmed.ends_with(',') {
     let trimmed = trimmed.trim_end_matches(',');
@@ -345,6 +364,49 @@ mod tests {
     let json = r#"not json"#;
     let err = parse_tsconfig(json).unwrap_err();
     assert!(err[0].contains("Invalid tsconfig.json"));
+  }
+
+  #[test]
+  fn extract_define_config_basic() {
+    let content = r#"import { defineConfig } from "ferrite"
+
+export default defineConfig({
+  entry: ["src/index.ts"],
+  splitting: false,
+})
+"#;
+    let result = extract_define_config(content).expect("should extract");
+    eprintln!("JSON: {result}");
+    let cfg: FerriteConfig = serde_json::from_str(&result).expect("should parse");
+    assert_eq!(cfg.entry.as_ref().unwrap(), &vec!["src/index.ts".to_string()]);
+    assert_eq!(cfg.splitting, Some(false));
+  }
+
+  #[test]
+  fn extract_define_config_nested() {
+    let content = r#"import { defineConfig } from "ferrite"
+
+export default defineConfig({
+  entry: ["src/index.ts"],
+  splitting: false,
+  sourcemap: false,
+  clean: true,
+  minify: false,
+  dts: false,
+  target: "esnext",
+  outDir: "dist",
+  tsconfig: "tsconfig.json",
+  external: ["react"],
+  format: "esm",
+  loader: {
+    ".js": "tsx",
+  },
+})
+"#;
+    let result = extract_define_config(content).expect("should extract");
+    eprintln!("JSON: {result}");
+    let cfg: FerriteConfig = serde_json::from_str(&result).expect("should parse");
+    assert_eq!(cfg.entry.as_ref().unwrap(), &vec!["src/index.ts".to_string()]);
   }
 
   #[test]

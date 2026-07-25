@@ -239,8 +239,21 @@ impl Compiler {
       }
 
       // Codegen with source map
-      let mut source_map = SourceMap::new(&source_file.source, &path.to_string_lossy());
+      // Compute map path first to derive relative source name
+      let map_path = if let Some(ref out_dir) = self.out_dir {
+        let rel = path.strip_prefix(&self.root_dir).unwrap_or(path.as_path());
+        out_dir.join(rel).with_extension("js.map")
+      } else {
+        path.with_extension("js.map")
+      };
+      let map_dir = map_path.parent().unwrap_or(Path::new("."));
+      let source_rel = diff_paths(&path, map_dir);
+      let source_name = source_rel.to_string_lossy().replace('\\', "/");
+      let mut source_map = SourceMap::new(&source_file.source, &source_name, Some(&source_file.source));
       let mut codegen = Codegen::new();
+      if self.ferrite_cfg.as_ref().and_then(|c| c.format.as_deref()) == Some("cjs") {
+        codegen.cjs = true;
+      }
       // Safety: source_map outlives codegen (both on this stack frame)
       unsafe { codegen.set_source_map(&raw mut source_map) };
       codegen.generate(&program);
@@ -252,17 +265,16 @@ impl Compiler {
         path.with_extension("js")
       };
       let js_name = out_path.file_name().unwrap().to_string_lossy().to_string();
-      outputs.push((out_path.to_string_lossy().to_string(), codegen.output));
+      let js_output = if self.ferrite_cfg.as_ref().and_then(|c| c.minify) == Some(true) {
+        minify_js(&codegen.output)
+      } else {
+        codegen.output
+      };
+      outputs.push((out_path.to_string_lossy().to_string(), js_output));
       // Source map (skip if sourcemap: false in ferrite.config)
       let emit_map = self.ferrite_cfg.as_ref().and_then(|c| c.sourcemap) != Some(false);
       if emit_map {
         let map_json = source_map.to_json(&js_name);
-        let map_path = if let Some(ref out_dir) = self.out_dir {
-          let rel = path.strip_prefix(&self.root_dir).unwrap_or(path.as_path());
-          out_dir.join(rel).with_extension("js.map")
-        } else {
-          path.with_extension("js.map")
-        };
         outputs.push((map_path.to_string_lossy().to_string(), map_json));
       }
 
@@ -319,9 +331,147 @@ impl Compiler {
       Statement::TypeAliasDeclaration { name, .. } => Some(name.clone()),
       Statement::EnumDeclaration { name, .. } => Some(name.clone()),
       Statement::ExpressionStatement { .. } => Some("default".to_string()),
+      Statement::DecoratedStatement { statement, .. } => Self::extract_export_name(statement),
       _ => None,
     }
   }
+}
+
+/// Compute relative path from `base` to `path`.
+fn diff_paths(path: &Path, base: &Path) -> PathBuf {
+  let path_c: Vec<_> = path.components().collect();
+  let base_c: Vec<_> = base.components().collect();
+  let mut i = 0;
+  while i < base_c.len() && i < path_c.len() && base_c[i] == path_c[i] {
+    i += 1;
+  }
+  let mut result = PathBuf::new();
+  for _ in i..base_c.len() {
+    result.push("..");
+  }
+  for c in &path_c[i..] {
+    result.push(c);
+  }
+  result
+}
+
+/// Minimal JS minifier: strip whitespace, comments, redundant semicolons outside strings/templates.
+/// Ponytail: not a real minifier, but enough to honor `minify: true`.
+fn minify_js(input: &str) -> String {
+  let bytes = input.as_bytes();
+  let mut out = Vec::with_capacity(bytes.len());
+  let mut i = 0;
+  while i < bytes.len() {
+    match bytes[i] {
+      b'"' | b'\'' => {
+        let q = bytes[i];
+        out.push(q);
+        i += 1;
+        while i < bytes.len() && bytes[i] != q {
+          if bytes[i] == b'\\' {
+            out.push(bytes[i]);
+            out.push(bytes[i + 1]);
+            i += 2;
+          } else {
+            out.push(bytes[i]);
+            i += 1;
+          }
+        }
+        if i < bytes.len() {
+          out.push(bytes[i]);
+          i += 1;
+        }
+      }
+      b'`' => {
+        out.push(b'`');
+        i += 1;
+        while i < bytes.len() && bytes[i] != b'`' {
+          if bytes[i] == b'\\' {
+            out.push(bytes[i]);
+            out.push(bytes[i + 1]);
+            i += 2;
+          } else if bytes[i] == b'{' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+            out.push(b'{');
+            out.push(b'{');
+            i += 2;
+            let mut depth = 1i32;
+            while i < bytes.len() && depth > 0 {
+              if bytes[i] == b'{' {
+                depth += 1;
+              } else if bytes[i] == b'}' {
+                depth -= 1;
+              }
+              if depth > 0 {
+                out.push(bytes[i]);
+              }
+              i += 1;
+            }
+            out.push(b'}');
+            out.push(b'}');
+          } else {
+            out.push(bytes[i]);
+            i += 1;
+          }
+        }
+        if i < bytes.len() {
+          out.push(b'`');
+          i += 1;
+        }
+      }
+      // strip line comments
+      b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
+        while i < bytes.len() && bytes[i] != b'\n' {
+          i += 1;
+        }
+      }
+      // strip block comments
+      b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+        i += 2;
+        while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+          i += 1;
+        }
+        i += 2; // skip */
+      }
+      b'\n' | b'\r' | b'\t' => {
+        i += 1;
+      }
+      b' ' => {
+        // collapse whitespace but keep one space where needed (between alphanums)
+        i += 1;
+        if !out.is_empty() {
+          let last = *out.last().unwrap();
+          let next = bytes.get(i);
+          let need_space = (last.is_ascii_alphanumeric() || last == b'_')
+            && next.is_some_and(|&b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$');
+          if need_space {
+            out.push(b' ');
+          }
+        }
+      }
+      _ => {
+        out.push(bytes[i]);
+        i += 1;
+      }
+    }
+  }
+  let result = String::from_utf8(out).unwrap_or_default();
+  // Post-pass: strip redundant semicolons (standalone ;; and ; before })
+  let bytes2 = result.as_bytes();
+  let mut out2 = Vec::with_capacity(bytes2.len());
+  let mut j = 0;
+  while j < bytes2.len() {
+    if bytes2[j] == b';' && j + 1 < bytes2.len() && bytes2[j + 1] == b';' {
+      // skip duplicate semicolons
+      j += 1;
+    } else if bytes2[j] == b';' && j + 1 < bytes2.len() && bytes2[j + 1] == b'}' {
+      // strip semicolon before closing brace
+      j += 1;
+    } else {
+      out2.push(bytes2[j]);
+      j += 1;
+    }
+  }
+  String::from_utf8(out2).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -490,5 +640,41 @@ mod tests {
     let mappings = &map[mappings_start..mappings_end];
     assert!(mappings.contains(';'), "expected semicolons: {mappings}");
     clean_dir(&dir);
+  }
+
+  #[test]
+  fn minify_strips_line_comments() {
+    assert_eq!(minify_js("let x = 1; // comment\nlet y = 2;"), "let x=1;let y=2;");
+  }
+
+  #[test]
+  fn minify_strips_block_comments() {
+    assert_eq!(minify_js("let x = /* inline */ 1;"), "let x=1;");
+  }
+
+  #[test]
+  fn minify_preserves_strings_with_slashes() {
+    assert_eq!(minify_js(r#"let x = "a/b"; // ok"#), r#"let x="a/b";"#);
+  }
+
+  #[test]
+  fn minify_strips_double_semicolons() {
+    assert_eq!(minify_js("let x = 1;; let y = 2;"), "let x=1;let y=2;");
+  }
+
+  #[test]
+  fn minify_strips_semicolon_before_brace() {
+    assert_eq!(minify_js("function f() { return 1; }"), "function f(){return 1}");
+  }
+
+  #[test]
+  fn minify_multiline_block_comment() {
+    let input = "let x = 1;\n/* multi\n   line\n   comment */\nlet y = 2;";
+    assert_eq!(minify_js(input), "let x=1;let y=2;");
+  }
+
+  #[test]
+  fn minify_preserves_regex_like_strings() {
+    assert_eq!(minify_js(r#"let x = "a/b/c";"#), r#"let x="a/b/c";"#);
   }
 }

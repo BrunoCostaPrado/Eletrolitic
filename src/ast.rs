@@ -20,6 +20,7 @@ pub struct ImportSpecifier {
   pub imported: Option<String>,
   pub span: Span,
   pub is_default: bool,
+  pub is_namespace: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,10 +64,11 @@ pub enum Statement {
   },
   ForInOfStatement {
     kind: VariableKind,
-    left: String,
+    left: Expression,
     right: Box<Expression>,
     body: Box<Statement>,
     is_of: bool,
+    is_await: bool,
     span: Span,
   },
   ReturnStatement {
@@ -100,6 +102,7 @@ pub enum Statement {
   },
   ExportDeclaration {
     declaration: Box<Statement>,
+    is_default: bool,
     span: Span,
   },
   SwitchStatement {
@@ -146,6 +149,21 @@ pub enum Statement {
     members: Vec<EnumMember>,
     span: Span,
   },
+  DeclareModule {
+    name: String,
+    body: Vec<Statement>,
+    span: Span,
+  },
+  DeclareNamespace {
+    name: String,
+    body: Vec<Statement>,
+    span: Span,
+  },
+  DecoratedStatement {
+    decorators: Vec<Expression>,
+    statement: Box<Statement>,
+    span: Span,
+  },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -163,7 +181,7 @@ pub struct SwitchCase {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CatchClause {
-  pub param: String,
+  pub param: Option<String>,
   pub type_ann: Option<TypeAnn>,
   pub body: Vec<Statement>,
   pub span: Span,
@@ -243,7 +261,10 @@ impl Statement {
       | Statement::LabeledStatement { span, .. }
       | Statement::DoWhileStatement { span, .. }
       | Statement::ClassDeclaration { span, .. }
-      | Statement::EnumDeclaration { span, .. } => *span,
+      | Statement::EnumDeclaration { span, .. }
+      | Statement::DeclareModule { span, .. }
+      | Statement::DeclareNamespace { span, .. } => *span,
+      Statement::DecoratedStatement { span, .. } => *span,
     }
   }
 }
@@ -460,6 +481,51 @@ pub enum Expression {
     type_ann: TypeAnn,
     span: Span,
   },
+  TaggedTemplateLiteral {
+    tag: Box<Expression>,
+    quasis: Vec<String>,
+    expressions: Vec<Box<Expression>>,
+    span: Span,
+  },
+  ImportMeta {
+    span: Span,
+  },
+  ImportCall {
+    source: Box<Expression>,
+    span: Span,
+  },
+  SatisfiesExpression {
+    expression: Box<Expression>,
+    type_ann: TypeAnn,
+    span: Span,
+  },
+  JsxElement {
+    tag: Box<Expression>,
+    attributes: Vec<JsxAttribute>,
+    children: Vec<JsxChild>,
+    self_closing: bool,
+    span: Span,
+  },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct JsxAttribute {
+  pub name: String,
+  pub value: JsxAttributeValue,
+  pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum JsxAttributeValue {
+  Expression(Box<Expression>),
+  Text(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum JsxChild {
+  Text(String),
+  Expression(Box<Expression>),
+  Element(Box<Expression>),
 }
 
 impl Expression {
@@ -491,7 +557,12 @@ impl Expression {
       | Expression::ObjectPattern { span, .. }
       | Expression::ArrayPattern { span, .. }
       | Expression::AwaitExpression { span, .. }
-      | Expression::AsExpression { span, .. } => *span,
+      | Expression::AsExpression { span, .. }
+      | Expression::TaggedTemplateLiteral { span, .. }
+      | Expression::ImportMeta { span }
+      | Expression::ImportCall { span, .. }
+      | Expression::SatisfiesExpression { span, .. }
+      | Expression::JsxElement { span, .. } => *span,
     }
   }
 }
@@ -547,6 +618,10 @@ pub enum AssignmentOp {
   ModAssign,
   BitAndAssign,
   BitOrAssign,
+  BitXorAssign,
+  NullishAssign,
+  AndAssign,
+  OrAssign,
 }
 
 #[derive(Debug, Clone, PartialEq)]

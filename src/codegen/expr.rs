@@ -72,6 +72,10 @@ fn assign_op_str(op: AssignmentOp) -> &'static str {
     AssignmentOp::ModAssign => "%=",
     AssignmentOp::BitAndAssign => "&=",
     AssignmentOp::BitOrAssign => "|=",
+    AssignmentOp::BitXorAssign => "^=",
+    AssignmentOp::NullishAssign => "??=",
+    AssignmentOp::AndAssign => "&&=",
+    AssignmentOp::OrAssign => "||=",
   }
 }
 
@@ -349,6 +353,71 @@ pub fn gen_expression(cg: &mut super::Codegen, expr: &Expression) {
     }
     Expression::AsExpression { expression, .. } => {
       gen_expression(cg, expression);
+    }
+    Expression::SatisfiesExpression { expression, .. } => {
+      gen_expression(cg, expression);
+    }
+    Expression::TaggedTemplateLiteral { tag, quasis, expressions, .. } => {
+      gen_expression(cg, tag);
+      let _ = write!(cg.output, "`");
+      for (i, quasi) in quasis.iter().enumerate() {
+        let _ = write!(cg.output, "{quasi}");
+        if let Some(expr) = expressions.get(i) {
+          let _ = write!(cg.output, "${{");
+          gen_expression(cg, expr);
+          let _ = write!(cg.output, "}}");
+        }
+      }
+      let _ = write!(cg.output, "`");
+    }
+    Expression::ImportMeta { .. } => {
+      let _ = write!(cg.output, "import.meta");
+    }
+    Expression::ImportCall { source, .. } => {
+      let _ = write!(cg.output, "import(");
+      gen_expression(cg, source);
+      let _ = write!(cg.output, ")");
+    }
+    Expression::JsxElement { tag, attributes, children, .. } => {
+      let _ = write!(cg.output, "React.createElement(");
+      gen_expression(cg, tag);
+      // Props object
+      if attributes.is_empty() {
+        let _ = write!(cg.output, ", null");
+      } else {
+        let _ = write!(cg.output, ", {{");
+        for (i, attr) in attributes.iter().enumerate() {
+          if i > 0 {
+            let _ = write!(cg.output, ", ");
+          }
+          let _ = write!(cg.output, "{}: ", attr.name);
+          match &attr.value {
+            crate::ast::JsxAttributeValue::Text(s) => {
+              let _ = write!(cg.output, "\"{s}\"");
+            }
+            crate::ast::JsxAttributeValue::Expression(e) => {
+              gen_expression(cg, e);
+            }
+          }
+        }
+        let _ = write!(cg.output, "}}");
+      }
+      // Children
+      for child in children {
+        let _ = write!(cg.output, ", ");
+        match child {
+          crate::ast::JsxChild::Text(s) => {
+            let _ = write!(cg.output, "\"{s}\"");
+          }
+          crate::ast::JsxChild::Expression(e) => {
+            gen_expression(cg, e);
+          }
+          crate::ast::JsxChild::Element(e) => {
+            gen_expression(cg, e);
+          }
+        }
+      }
+      let _ = write!(cg.output, ")");
     }
   }
 }

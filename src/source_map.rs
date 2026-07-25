@@ -4,6 +4,7 @@ const BASE64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123
 
 pub struct SourceMap {
   source_name: String,
+  source_content: Option<String>,
   line_starts: Vec<usize>,
   mappings: Vec<Mapping>,
 }
@@ -18,10 +19,15 @@ struct Mapping {
 
 impl SourceMap {
   #[must_use]
-  pub fn new(source_text: &str, source_name: &str) -> Self {
+  pub fn new(source_text: &str, source_name: &str, source_content: Option<&str>) -> Self {
     let line_starts: Vec<usize> =
       std::iter::once(0).chain(source_text.match_indices('\n').map(|(i, _)| i + 1)).collect();
-    Self { source_name: source_name.to_string(), line_starts, mappings: Vec::new() }
+    Self {
+      source_name: source_name.to_string(),
+      source_content: source_content.map(|s| s.to_string()),
+      line_starts,
+      mappings: Vec::new(),
+    }
   }
 
   /// Convert byte offset to (line, col) — both 0-based.
@@ -45,8 +51,12 @@ impl SourceMap {
   pub fn to_json(&self, generated_file: &str) -> String {
     // ponytail: skip clone+sort — add_mapping called in gen_line/gen_col order
     let encoded = Self::encode_mappings(&self.mappings);
+    let sources_content = match &self.source_content {
+      Some(c) => format!(",\"sourcesContent\":[\"{}\"]", json_escape(c)),
+      None => String::new(),
+    };
     format!(
-      r#"{{"version":3,"file":"{generated_file}","sources":["{}"],"names":[],"mappings":"{encoded}"}}"#,
+      r#"{{"version":3,"file":"{generated_file}","sources":["{}"]{sources_content},"names":[],"mappings":"{encoded}"}}"#,
       self.source_name
     )
   }
@@ -104,6 +114,21 @@ fn vlq_encode(mut value: i64) -> String {
   result
 }
 
+fn json_escape(s: &str) -> String {
+  let mut out = String::with_capacity(s.len());
+  for c in s.chars() {
+    match c {
+      '"' => out.push_str("\\\""),
+      '\\' => out.push_str("\\\\"),
+      '\n' => out.push_str("\\n"),
+      '\r' => out.push_str("\\r"),
+      '\t' => out.push_str("\\t"),
+      _ => out.push(c),
+    }
+  }
+  out
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -135,7 +160,7 @@ mod tests {
 
   #[test]
   fn byte_to_line_col_simple() {
-    let sm = SourceMap::new("hello\nworld\n", "test.ts");
+    let sm = SourceMap::new("hello\nworld\n", "test.ts", None);
     assert_eq!(sm.byte_to_line_col(0), (0, 0));
     assert_eq!(sm.byte_to_line_col(4), (0, 4));
     assert_eq!(sm.byte_to_line_col(5), (0, 5)); // \n
@@ -145,7 +170,7 @@ mod tests {
 
   #[test]
   fn single_mapping_json() {
-    let mut sm = SourceMap::new("let x = 1;\n", "input.ts");
+    let mut sm = SourceMap::new("let x = 1;\n", "input.ts", None);
     sm.add_mapping(0, 0, Span::new(0, 11));
     let json = sm.to_json("output.js");
     assert!(json.contains("\"version\":3"));
@@ -156,7 +181,7 @@ mod tests {
 
   #[test]
   fn multiple_mappings_encode() {
-    let mut sm = SourceMap::new("let a = 1;\nlet b = 2;\n", "input.ts");
+    let mut sm = SourceMap::new("let a = 1;\nlet b = 2;\n", "input.ts", None);
     sm.add_mapping(0, 0, Span::new(0, 11));
     sm.add_mapping(1, 0, Span::new(11, 22));
     let json = sm.to_json("out.js");
@@ -169,7 +194,7 @@ mod tests {
 
   #[test]
   fn source_map_is_valid_json() {
-    let mut sm = SourceMap::new("x;\n", "a.ts");
+    let mut sm = SourceMap::new("x;\n", "a.ts", None);
     sm.add_mapping(0, 0, Span::new(0, 2));
     let json = sm.to_json("a.js");
     assert!(json.starts_with('{'));
@@ -178,5 +203,34 @@ mod tests {
     assert!(json.contains("\"mappings\":\""));
     assert!(json.contains("\"sources\":[\"a.ts\"]"));
     assert!(json.contains("\"file\":\"a.js\""));
+  }
+
+  #[test]
+  fn json_escape_basic() {
+    assert_eq!(json_escape("hello"), "hello");
+    assert_eq!(json_escape("a\"b"), "a\\\"b");
+    assert_eq!(json_escape("a\\b"), "a\\\\b");
+    assert_eq!(json_escape("a\nb"), "a\\nb");
+  }
+
+  #[test]
+  fn source_map_with_content() {
+    let mut sm = SourceMap::new("let x = 1;\n", "input.ts", Some("let x = 1;\n"));
+    sm.add_mapping(0, 0, Span::new(0, 11));
+    let json = sm.to_json("output.js");
+    assert!(
+      json.contains("\"sourcesContent\":[\"let x = 1;\\n\"]"),
+      "missing sourcesContent: {json}"
+    );
+    assert!(json.contains("\"sources\":[\"input.ts\"]"));
+    assert!(json.contains("\"file\":\"output.js\""));
+  }
+
+  #[test]
+  fn source_map_without_content_omits_field() {
+    let mut sm = SourceMap::new("let x = 1;\n", "input.ts", None);
+    sm.add_mapping(0, 0, Span::new(0, 11));
+    let json = sm.to_json("output.js");
+    assert!(!json.contains("sourcesContent"), "should omit sourcesContent: {json}");
   }
 }

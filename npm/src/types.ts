@@ -375,7 +375,7 @@ export interface CompilerConfig {
 	/** Experimental declaration generation. */
 	experimentalDts?: ExperimentalDtsOption
 	/** Source map style. */
-	sourcemap?: "inline"
+	sourcemap?: boolean | "inline"
 	/** Packages to include (not external). */
 	noExternal?: string[]
 	/** Packages to exclude from bundle. */

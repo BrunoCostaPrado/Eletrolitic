@@ -2,27 +2,66 @@ use ferrite::compiler::Compiler;
 use ferrite::config;
 use std::time::Instant;
 
+/// Get or create a FerriteConfig, returning a mutable reference.
+fn ensure_cfg<'a>(cfg: &'a mut Option<(ferrite::config::FerriteConfig, std::path::PathBuf)>, cwd: &std::path::Path) -> &'a mut ferrite::config::FerriteConfig {
+  &mut cfg.get_or_insert_with(|| (ferrite::config::FerriteConfig::default(), cwd.to_path_buf())).0
+}
+
 fn fmt_size(bytes: usize) -> String {
-  if bytes >= 1024 {
-    format!("{:.2} kB", bytes as f64 / 1024.0)
-  } else {
-    format!("{bytes} B")
-  }
+  if bytes >= 1024 { format!("{:.2} kB", bytes as f64 / 1024.0) } else { format!("{bytes} B") }
 }
 
 fn main() {
   let args: Vec<String> = std::env::args().collect();
   let mut entry = None;
   let mut tsconfig = None;
+  let mut out_dir: Option<String> = None;
+  let mut no_emit = false;
+  let mut target: Option<String> = None;
+  let mut strict = false;
 
   let mut i = 1;
   while i < args.len() {
     match args[i].as_str() {
+      "--help" | "-h" => {
+        eprintln!("Usage: ferrite [options] [file.ts]");
+        eprintln!("       ferrite build|compile");
+        eprintln!();
+        eprintln!("Options:");
+        eprintln!("  --tsconfig <path>  Path to tsconfig.json");
+        eprintln!("  --outDir <dir>     Output directory");
+        eprintln!("  --noEmit           Type-check only, no output");
+        eprintln!("  --target <target>  ES target (es2015-esnext)");
+        eprintln!("  --strict           Enable strict mode");
+        eprintln!("  --help, -h         Show this help");
+        eprintln!("  --version, -V      Show version");
+        eprintln!();
+        eprintln!("Config: ferrite.config.ts with defineConfig({{ entry: [...] }})");
+        std::process::exit(0);
+      }
+      "--version" | "-V" => {
+        eprintln!("ferrite 0.1.0");
+        std::process::exit(0);
+      }
       "--tsconfig" => {
         i += 1;
         tsconfig = args.get(i).cloned();
       }
-      "build" | "compile" => {} // subcommand aliases — same as bare ferrite
+      "--outDir" => {
+        i += 1;
+        out_dir = args.get(i).cloned();
+      }
+      "--noEmit" => {
+        no_emit = true;
+      }
+      "--target" => {
+        i += 1;
+        target = args.get(i).cloned();
+      }
+      "--strict" => {
+        strict = true;
+      }
+      "build" | "compile" => {}
       _ if entry.is_none() => entry = Some(args[i].clone()),
       _ => {}
     }
@@ -34,7 +73,6 @@ fn main() {
   let cwd = std::env::current_dir().unwrap_or_default();
   if let Some((cfg, cfg_dir)) = config::load_ferrite_config(&cwd) {
     eprintln!("\x1b[2mℹ  ferrite\x1b[0m");
-    // Show actual config file found
     for name in &["ferrite.config.ts", "ferrite.config.js", "ferrite.config.json"] {
       if cfg_dir.join(name).exists() {
         eprintln!("\x1b[2mℹ  config file: {}\x1b[0m", cfg_dir.join(name).display());
@@ -42,6 +80,17 @@ fn main() {
       }
     }
     ferrite_cfg = Some((cfg, cfg_dir));
+  }
+
+  // CLI flags override config values
+  if let Some(dir) = &out_dir {
+    ensure_cfg(&mut ferrite_cfg, &cwd).out_dir = Some(dir.clone());
+  }
+  if strict {
+    ensure_cfg(&mut ferrite_cfg, &cwd).strict = Some(true);
+  }
+  if let Some(t) = &target {
+    ensure_cfg(&mut ferrite_cfg, &cwd).target = Some(t.clone());
   }
 
   // If no entry given, get it from ferrite config
@@ -73,28 +122,40 @@ fn main() {
 
   match result {
     Ok(outputs) => {
-      let mut total_bytes = 0usize;
-      for (path, content) in &outputs {
-        // Ensure parent dir exists (for outDir mirroring)
-        if let Some(parent) = std::path::Path::new(path).parent() {
-          let _ = std::fs::create_dir_all(parent);
+      if no_emit {
+        let file_count = outputs.iter().filter(|(p, _)| p.ends_with(".js")).count();
+        eprintln!("\x1b[2mℹ  {} files (no emit)\x1b[0m", file_count);
+      } else {
+        let mut total_bytes = 0usize;
+        for (path, content) in &outputs {
+          let write_path = if let Some(dir) = &out_dir {
+            let file_name = std::path::Path::new(path)
+              .file_name()
+              .map(|f| f.to_string_lossy().to_string())
+              .unwrap_or_else(|| path.clone());
+            format!("{}/{}", dir, file_name)
+          } else {
+            path.clone()
+          };
+          if let Some(parent) = std::path::Path::new(&write_path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+          }
+          if let Err(e) = std::fs::write(&write_path, content) {
+            eprintln!("Error writing {write_path}: {e}");
+            std::process::exit(1);
+          }
+          total_bytes += content.len();
+          let display = std::path::Path::new(&write_path)
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_else(|| write_path.clone());
+          eprintln!("\x1b[2mℹ  {display:<32} {}\x1b[0m", fmt_size(content.len()));
         }
-        if let Err(e) = std::fs::write(path, content) {
-          eprintln!("Error writing {path}: {e}");
-          std::process::exit(1);
-        }
-        total_bytes += content.len();
-        // Format: dist/file.js    1.23 kB
-        let display = std::path::Path::new(path)
-          .file_name()
-          .map(|f| f.to_string_lossy().to_string())
-          .unwrap_or_else(|| path.clone());
-        eprintln!("\x1b[2mℹ  {display:<32} {}\x1b[0m", fmt_size(content.len()));
+        let elapsed = start.elapsed().as_millis();
+        let file_count = outputs.iter().filter(|(p, _)| p.ends_with(".js")).count();
+        eprintln!("\x1b[2mℹ  {} files, total: {}\x1b[0m", file_count, fmt_size(total_bytes));
+        eprintln!("\x1b[32m✔\x1b[0m Build complete in {elapsed}ms");
       }
-      let elapsed = start.elapsed().as_millis();
-      let file_count = outputs.iter().filter(|(p, _)| p.ends_with(".js")).count();
-      eprintln!("\x1b[2mℹ  {} files, total: {}\x1b[0m", file_count, fmt_size(total_bytes));
-      eprintln!("\x1b[32m✔\x1b[0m Build complete in {elapsed}ms");
     }
     Err(errors) => {
       for err in &errors {

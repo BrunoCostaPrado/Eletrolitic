@@ -24,4 +24,5 @@ pub mod lexer;
 pub mod parser;
 pub mod source_map;
 pub mod token;
+pub mod tree_shake;
 pub mod type_checker;

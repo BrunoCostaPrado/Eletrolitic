@@ -4,7 +4,6 @@ Cargo.lock
 # Agent/tool state
 .codegraph/
 .opencode/
-.gemini/
 graphify-out/
 .worktrees
 
@@ -32,5 +31,10 @@ __pycache__/
 # Stale
 error.txt
 out.txt
-
+info.txt
 .graphifyignore
+
+# Test
+test/
+
+docs

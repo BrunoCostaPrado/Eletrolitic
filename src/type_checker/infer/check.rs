@@ -239,7 +239,9 @@ impl TypeChecker {
           Type::String
         };
         env.push_scope();
-        let _ = env.declare(left, elem_type);
+        if let Expression::Identifier { name, .. } = left {
+          let _ = env.declare(&name, elem_type);
+        }
         self.check_statement(body, env);
         env.pop_scope();
       }
@@ -273,7 +275,9 @@ impl TypeChecker {
           env.push_scope();
           let catch_type =
             catch.type_ann.as_ref().map_or(Type::Unknown, |ann| self.type_ann_to_type(ann, env));
-          let _ = env.declare(&catch.param, catch_type);
+          if let Some(ref param) = catch.param {
+            let _ = env.declare(param, catch_type);
+          }
           for stmt in &catch.body {
             self.check_statement(stmt, env);
           }
@@ -407,6 +411,14 @@ impl TypeChecker {
           let _ = env.declare(&m.name, member_type);
         }
         let _ = env.declare(name, Type::Enum { name: name.clone(), members: enum_members });
+      }
+      Statement::DeclareModule { body, .. } | Statement::DeclareNamespace { body, .. } => {
+        for stmt in body {
+          self.check_statement(stmt, env);
+        }
+      }
+      Statement::DecoratedStatement { statement, .. } => {
+        self.check_statement(statement, env);
       }
     }
   }

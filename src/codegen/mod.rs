@@ -9,6 +9,7 @@ use std::fmt::Write;
 pub struct Codegen {
   pub output: String,
   pub indent: usize,
+  pub cjs: bool,
   gen_line: usize,
   gen_col: usize,
   source_map: *mut SourceMap,
@@ -21,6 +22,7 @@ impl Codegen {
     Self {
       output: String::new(),
       indent: 0,
+      cjs: false,
       gen_line: 0,
       gen_col: 0,
       source_map: std::ptr::null_mut(),
@@ -204,48 +206,52 @@ impl Codegen {
       }
       Statement::ImportDeclaration { specifiers, source, is_type, .. } => {
         if *is_type {
-          return; // import type is erased in JS output
+          return;
         }
         self.gen_indent();
-        let _ = write!(self.output, "import ");
-        let has_named = specifiers.iter().any(|s| !s.is_default);
+        let has_namespace = specifiers.iter().any(|s| s.is_namespace);
         let has_default = specifiers.iter().any(|s| s.is_default);
-        if has_default && !has_named {
-          // import React from "mod"
-          let _ = write!(self.output, "{}", specifiers[0].local);
-        } else if has_default && has_named {
-          // import React, { useState } from "mod"
-          let default = specifiers.iter().find(|s| s.is_default).unwrap();
-          let _ = write!(self.output, "{}, ", default.local);
-          let named: Vec<_> = specifiers.iter().filter(|s| !s.is_default).collect();
-          let _ = write!(self.output, "{{ ");
-          for (i, s) in named.iter().enumerate() {
-            if i > 0 {
-              let _ = write!(self.output, ", ");
+        let named: Vec<_> =
+          specifiers.iter().filter(|s| !s.is_default && !s.is_namespace).cloned().collect();
+        if self.cjs {
+          if has_namespace {
+            let local = &specifiers.iter().find(|s| s.is_namespace).unwrap().local;
+            let _ = write!(self.output, "const {local} = require(\"{source}\");");
+          } else if has_default && named.is_empty() {
+            let _ = write!(self.output, "const {} = require(\"{source}\");", specifiers[0].local);
+          } else if has_default {
+            let default = specifiers.iter().find(|s| s.is_default).unwrap();
+            let _ = write!(self.output, "const {} = require(\"{source}\");", default.local);
+            if !named.is_empty() {
+              let _ = writeln!(self.output);
+              self.gen_indent();
+              let _ = write!(self.output, "const ");
+              self.write_specifiers(&named);
+              let _ = write!(self.output, " = require(\"{source}\");");
             }
-            if let Some(ref imported) = s.imported {
-              let _ = write!(self.output, "{imported} as {}", s.local);
-            } else {
-              let _ = write!(self.output, "{}", s.local);
-            }
+          } else {
+            let _ = write!(self.output, "const ");
+            self.write_specifiers(specifiers);
+            let _ = write!(self.output, " = require(\"{source}\");");
           }
-          let _ = write!(self.output, " }}");
         } else {
-          // import { x, y } from "mod"
-          let _ = write!(self.output, "{{ ");
-          for (i, s) in specifiers.iter().enumerate() {
-            if i > 0 {
-              let _ = write!(self.output, ", ");
-            }
-            if let Some(ref imported) = s.imported {
-              let _ = write!(self.output, "{imported} as {}", s.local);
-            } else {
-              let _ = write!(self.output, "{}", s.local);
-            }
+          if has_namespace {
+            let local = &specifiers.iter().find(|s| s.is_namespace).unwrap().local;
+            let _ = write!(self.output, "import * as {local} from \"{source}\";");
+          } else if has_default && named.is_empty() {
+            let _ = write!(self.output, "import {} from \"{source}\";", specifiers[0].local);
+          } else if has_default {
+            let default = specifiers.iter().find(|s| s.is_default).unwrap();
+            let _ = write!(self.output, "import {}, ", default.local);
+            self.write_specifiers(&named);
+            let _ = write!(self.output, " from \"{source}\";");
+          } else {
+            let _ = write!(self.output, "import ");
+            self.write_specifiers(specifiers);
+            let _ = write!(self.output, " from \"{source}\";");
           }
-          let _ = write!(self.output, " }}");
         }
-        let _ = writeln!(self.output, " from \"{source}\";");
+        let _ = writeln!(self.output);
       }
       Statement::TypeAliasDeclaration { .. } => {
         // ponytail: type aliases stripped in JS output
@@ -253,12 +259,41 @@ impl Codegen {
       Statement::InterfaceDeclaration { .. } => {
         // ponytail: interfaces stripped in JS output
       }
-      Statement::ExportDeclaration { declaration, .. } => {
-        self.gen_indent();
-        let _ = write!(self.output, "export ");
-        self.gen_statement(declaration);
+      Statement::ExportDeclaration { declaration, is_default, .. } => {
+        if self.cjs {
+          if *is_default {
+            if let Statement::ExpressionStatement { expression, .. } = declaration.as_ref() {
+              self.gen_indent();
+              let _ = write!(self.output, "module.exports = ");
+              expr::gen_expression(self, expression);
+              let _ = writeln!(self.output, ";");
+            } else {
+              let name = Self::extract_decl_name(declaration);
+              self.gen_statement(declaration);
+              if let Some(name) = name {
+                self.gen_indent();
+                let _ = writeln!(self.output, "module.exports = {name};");
+              }
+            }
+          } else {
+            let name = Self::extract_decl_name(declaration);
+            self.gen_statement(declaration);
+            if let Some(name) = name {
+              self.gen_indent();
+              let _ = writeln!(self.output, "module.exports.{name} = {name};");
+            }
+          }
+        } else {
+          self.gen_indent();
+          if *is_default {
+            let _ = write!(self.output, "export default ");
+          } else {
+            let _ = write!(self.output, "export ");
+          }
+          self.gen_statement(declaration);
+        }
       }
-      Statement::ForInOfStatement { kind, left, right, body, is_of, .. } => {
+      Statement::ForInOfStatement { kind, left, right, body, is_of, is_await, .. } => {
         self.gen_indent();
         let kw = match kind {
           VariableKind::Let => "let",
@@ -266,7 +301,13 @@ impl Codegen {
           VariableKind::Var => "var",
         };
         let op = if *is_of { "of" } else { "in" };
-        let _ = write!(self.output, "for ({kw} {left} {op} ");
+        let _ = write!(self.output, "for (");
+        if *is_await {
+          let _ = write!(self.output, "await ");
+        }
+        let _ = write!(self.output, "{kw} ");
+        expr::gen_expression(self, left);
+        let _ = write!(self.output, " {op} ");
         expr::gen_expression(self, right);
         let _ = write!(self.output, ") ");
         self.gen_statement(body);
@@ -307,15 +348,15 @@ impl Codegen {
         let _ = writeln!(self.output, "try ");
         self.gen_statement(body);
         if let Some(catch) = handler {
-          if let Some(ta) = &catch.type_ann {
-            let _ = write!(
-              self.output,
-              " catch ({}: {})",
-              catch.param,
-              crate::decl_emit::render_type_ann(ta)
-            );
+          if let Some(ref param) = catch.param {
+            if let Some(ta) = &catch.type_ann {
+              let _ =
+                write!(self.output, " catch ({param}: {})", crate::decl_emit::render_type_ann(ta));
+            } else {
+              let _ = write!(self.output, " catch ({param})");
+            }
           } else {
-            let _ = write!(self.output, " catch ({})", catch.param);
+            // bare catch (ES2019)
           }
           let _ = writeln!(self.output, " {{");
           self.indent += 1;
@@ -378,18 +419,6 @@ impl Codegen {
         // Fields first
         for field in &body.fields {
           self.gen_indent();
-          match field.visibility {
-            Some(crate::ast::Visibility::Public) => {
-              let _ = write!(self.output, "public ");
-            }
-            Some(crate::ast::Visibility::Private) => {
-              let _ = write!(self.output, "private ");
-            }
-            Some(crate::ast::Visibility::Protected) => {
-              let _ = write!(self.output, "protected ");
-            }
-            None => {}
-          }
           if field.is_static {
             let _ = write!(self.output, "static ");
           }
@@ -415,18 +444,6 @@ impl Codegen {
         // Methods
         for method in &body.methods {
           self.gen_indent();
-          match method.visibility {
-            Some(crate::ast::Visibility::Public) => {
-              let _ = write!(self.output, "public ");
-            }
-            Some(crate::ast::Visibility::Private) => {
-              let _ = write!(self.output, "private ");
-            }
-            Some(crate::ast::Visibility::Protected) => {
-              let _ = write!(self.output, "protected ");
-            }
-            None => {}
-          }
           if method.is_static {
             let _ = write!(self.output, "static ");
           }
@@ -468,16 +485,71 @@ impl Codegen {
       }
       Statement::EnumDeclaration { name, members, .. } => {
         self.gen_indent();
+        let mut auto_val: i64 = 0;
         let _ = write!(self.output, "const {name} = {{");
         for (i, member) in members.iter().enumerate() {
           if i > 0 {
             let _ = write!(self.output, ", ");
           }
-          let value_str = member.value.as_deref().unwrap_or(&member.name);
-          let _ = write!(self.output, "{}: \"{}\"", member.name, value_str);
+          match &member.value {
+            Some(v) if v.parse::<i64>().is_ok() => {
+              let n: i64 = v.parse().unwrap();
+              auto_val = n;
+              let _ = write!(self.output, "{}: {n}", member.name);
+              auto_val += 1;
+            }
+            Some(v) => {
+              let _ = write!(self.output, "{}: \"{v}\"", member.name);
+            }
+            None => {
+              let _ = write!(self.output, "{}: {auto_val}", member.name);
+              auto_val += 1;
+            }
+          }
         }
         let _ = writeln!(self.output, "}};");
       }
+      Statement::DeclareModule { body, .. } | Statement::DeclareNamespace { body, .. } => {
+        for stmt in body {
+          self.gen_statement(stmt);
+        }
+      }
+      Statement::DecoratedStatement { statement, .. } => {
+        self.gen_statement(statement);
+      }
+    }
+  }
+
+  /// Write import specifiers as "{ a as b, c }" — used by both CJS and ESM import codegen.
+  fn write_specifiers(&mut self, specs: &[crate::ast::ImportSpecifier]) {
+    let _ = write!(self.output, "{{ ");
+    for (i, s) in specs.iter().enumerate() {
+      if i > 0 {
+        let _ = write!(self.output, ", ");
+      }
+      if let Some(ref imported) = s.imported {
+        let _ = write!(self.output, "{imported} as {}", s.local);
+      } else {
+        let _ = write!(self.output, "{}", s.local);
+      }
+    }
+    let _ = write!(self.output, " }}");
+  }
+
+  /// Extract the name from a declaration statement for CJS exports.
+  fn extract_decl_name(decl: &Statement) -> Option<String> {
+    match decl {
+      Statement::FunctionDeclaration { name, .. } if !name.is_empty() => Some(name.clone()),
+      Statement::ClassDeclaration { name, .. } => Some(name.clone()),
+      Statement::VariableDeclaration { declarations, .. } => declarations.iter().find_map(|d| {
+        if let Expression::Identifier { name, .. } = d.id.as_ref() {
+          Some(name.clone())
+        } else {
+          None
+        }
+      }),
+      Statement::DecoratedStatement { statement, .. } => Self::extract_decl_name(statement),
+      _ => None,
     }
   }
 

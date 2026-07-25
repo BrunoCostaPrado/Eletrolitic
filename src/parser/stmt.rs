@@ -11,7 +11,15 @@ use super::Parser;
 impl Parser {
   pub(super) fn parse_statement(&mut self) -> Option<Statement> {
     match &self.peek().kind {
-      TokenKind::Let | TokenKind::Const | TokenKind::Var => Some(self.parse_variable_declaration()),
+      TokenKind::Let | TokenKind::Var => Some(self.parse_variable_declaration()),
+      TokenKind::Const => {
+        // Could be const enum
+        if self.peek_ahead(1).kind == TokenKind::Enum {
+          Some(self.parse_const_enum_declaration())
+        } else {
+          Some(self.parse_variable_declaration())
+        }
+      }
       TokenKind::If => Some(self.parse_if_statement()),
       TokenKind::While => Some(self.parse_while_statement()),
       TokenKind::For => Some(self.parse_for_statement()),
@@ -31,6 +39,28 @@ impl Parser {
       TokenKind::Enum => Some(self.parse_enum_declaration()),
       TokenKind::Interface => Some(self.parse_interface_declaration()),
       TokenKind::Async => Some(self.parse_function_declaration()),
+      TokenKind::Declare => Some(self.parse_declare_statement()),
+      TokenKind::At => {
+        let mut decorators = Vec::new();
+        while self.peek().kind == TokenKind::At {
+          self.advance(); // consume @
+          let expr = self
+            .parse_expression(0)
+            .unwrap_or_else(|| Box::new(Expression::Placeholder { span: self.peek().span }));
+          decorators.push(*expr);
+        }
+        let inner = self.parse_statement().unwrap_or_else(|| Statement::ExpressionStatement {
+          expression: Box::new(Expression::Placeholder { span: self.peek().span }),
+          span: self.peek().span,
+        });
+        let start = decorators.first().map_or(inner.span().start, |e| e.span().start);
+        let end = inner.span().end;
+        Some(Statement::DecoratedStatement {
+          decorators,
+          statement: Box::new(inner),
+          span: Span::new(start, end),
+        })
+      }
       _ => {
         // Labeled statement: identifier followed by ':'
         if let TokenKind::Identifier(_) = &self.peek().kind
@@ -129,25 +159,88 @@ impl Parser {
     let start = self.advance().span.start;
     self.expect(TokenKind::OpenParen);
 
-    // Detect for-in / for-of: for (let x of/in expr)
+    // Detect `for await (let/const/var x of expr)`
+    let is_await = if self.peek().kind == TokenKind::Await {
+      self.advance(); // consume 'await'
+      true
+    } else {
+      false
+    };
+
+    // Detect for-in / for-of: for (let/const/var x of/in expr)
+    // Also handle destructured patterns: for (const { a, b } of expr)
     if matches!(self.peek().kind, TokenKind::Let | TokenKind::Const | TokenKind::Var)
-      && matches!(self.peek_ahead(2).kind, TokenKind::Of | TokenKind::In)
+      && (matches!(self.peek_ahead(2).kind, TokenKind::Of | TokenKind::In)
+        || matches!(self.peek_ahead(1).kind, TokenKind::OpenBrace | TokenKind::OpenBracket))
     {
       let kind = match &self.peek().kind {
         TokenKind::Let => VariableKind::Let,
         TokenKind::Const => VariableKind::Const,
         TokenKind::Var => VariableKind::Var,
-        _ => unreachable!(),
+        _ => {
+          self.diagnostics.push(Diagnostic::error(
+            "E999",
+            "Internal parser error: unexpected state",
+            self.peek().span,
+          ));
+          VariableKind::Var
+        }
       };
       self.advance(); // consume let/const/var
-      let left = if let TokenKind::Identifier(n) = &self.peek().kind {
+      let left = if matches!(self.peek().kind, TokenKind::OpenBrace | TokenKind::OpenBracket) {
+        // Destructured pattern: { a, b } or [a, b]
+        self.parse_lvalue()
+      } else {
+        let left_span = self.peek().span;
+        let left_name = if let TokenKind::Identifier(n) = &self.peek().kind {
+          let n = n.clone();
+          self.advance();
+          n
+        } else {
+          self.diagnostics.push(Diagnostic::error(
+            "E001",
+            format!("Expected identifier, found '{}'", self.peek().kind),
+            self.peek().span,
+          ));
+          String::new()
+        };
+        Box::new(Expression::Identifier { name: left_name, span: left_span })
+      };
+      let is_of = self.peek().kind == TokenKind::Of;
+      self.advance(); // consume of/in
+      let right = self
+        .parse_expression(0)
+        .unwrap_or_else(|| Box::new(Expression::Placeholder { span: self.peek().span }));
+      self.expect(TokenKind::CloseParen);
+      let body = self.parse_statement().unwrap_or_else(|| Statement::ExpressionStatement {
+        expression: Box::new(Expression::Placeholder { span: self.peek().span }),
+        span: self.peek().span,
+      });
+      let end = body.span();
+      return Statement::ForInOfStatement {
+        kind,
+        left: *left,
+        right,
+        body: Box::new(body),
+        is_of,
+        is_await,
+        span: Span::new(start, end.end),
+      };
+    }
+
+    // Also check bare for-in/for-of: for (x of/in expr) — x is an existing identifier
+    if let TokenKind::Identifier(_) = &self.peek().kind
+      && matches!(self.peek_ahead(1).kind, TokenKind::Of | TokenKind::In)
+    {
+      let left_span = self.peek().span;
+      let left_name = if let TokenKind::Identifier(n) = &self.peek().kind {
         let n = n.clone();
         self.advance();
         n
       } else {
         self.diagnostics.push(Diagnostic::error(
-          "E001",
-          format!("Expected identifier, found '{}'", self.peek().kind),
+          "E999",
+          "Internal parser error: unexpected state",
           self.peek().span,
         ));
         String::new()
@@ -164,43 +257,12 @@ impl Parser {
       });
       let end = body.span();
       return Statement::ForInOfStatement {
-        kind,
-        left,
-        right,
-        body: Box::new(body),
-        is_of,
-        span: Span::new(start, end.end),
-      };
-    }
-
-    // Also check bare for-in/for-of: for (x of/in expr) — x is an existing identifier
-    if let TokenKind::Identifier(_) = &self.peek().kind
-      && matches!(self.peek_ahead(1).kind, TokenKind::Of | TokenKind::In)
-    {
-      let left = if let TokenKind::Identifier(n) = &self.peek().kind {
-        let n = n.clone();
-        self.advance();
-        n
-      } else {
-        unreachable!()
-      };
-      let is_of = self.peek().kind == TokenKind::Of;
-      self.advance(); // consume of/in
-      let right = self
-        .parse_expression(0)
-        .unwrap_or_else(|| Box::new(Expression::Placeholder { span: self.peek().span }));
-      self.expect(TokenKind::CloseParen);
-      let body = self.parse_statement().unwrap_or_else(|| Statement::ExpressionStatement {
-        expression: Box::new(Expression::Placeholder { span: self.peek().span }),
-        span: self.peek().span,
-      });
-      let end = body.span();
-      return Statement::ForInOfStatement {
         kind: VariableKind::Var,
-        left,
+        left: Expression::Identifier { name: left_name, span: left_span },
         right,
         body: Box::new(body),
         is_of,
+        is_await,
         span: Span::new(start, end.end),
       };
     }
@@ -217,7 +279,14 @@ impl Parser {
           Statement::VariableDeclaration { kind, declarations, .. } => {
             Some(ForInit::VariableDeclaration { kind, declarations })
           }
-          _ => unreachable!(),
+          _ => {
+            self.diagnostics.push(Diagnostic::error(
+              "E999",
+              "Internal parser error: unexpected state in for-init",
+              self.peek().span,
+            ));
+            Some(ForInit::VariableDeclaration { kind: VariableKind::Var, declarations: Vec::new() })
+          }
         }
       }
       _ => {
@@ -258,7 +327,14 @@ impl Parser {
       TokenKind::Let => VariableKind::Let,
       TokenKind::Const => VariableKind::Const,
       TokenKind::Var => VariableKind::Var,
-      _ => unreachable!(),
+      _ => {
+        self.diagnostics.push(Diagnostic::error(
+          "E999",
+          "Internal parser error: unexpected state",
+          self.peek().span,
+        ));
+        VariableKind::Var
+      }
     };
     self.advance();
     let mut declarations = Vec::new();
@@ -411,7 +487,14 @@ impl Parser {
       TokenKind::Let => VariableKind::Let,
       TokenKind::Const => VariableKind::Const,
       TokenKind::Var => VariableKind::Var,
-      _ => unreachable!(),
+      _ => {
+        self.diagnostics.push(Diagnostic::error(
+          "E999",
+          "Internal parser error: unexpected state",
+          self.peek().span,
+        ));
+        VariableKind::Var
+      }
     };
     let mut declarations = Vec::new();
     loop {
@@ -476,6 +559,7 @@ impl Parser {
           imported,
           span: Span::new(local_start.start, end),
           is_default: false,
+          is_namespace: false,
         });
         if self.peek().kind == TokenKind::Comma {
           self.advance();
@@ -499,6 +583,7 @@ impl Parser {
         imported: None,
         span: Span::new(start, end),
         is_default: false,
+        is_namespace: true,
       });
     } else if matches!(self.peek().kind, TokenKind::Identifier(_)) {
       // import x from "mod"  or  import x, { y } from "mod"
@@ -511,6 +596,7 @@ impl Parser {
         imported: None,
         span: Span::new(start, end),
         is_default: true,
+        is_namespace: false,
       });
       if self.peek().kind == TokenKind::Comma {
         self.advance();
@@ -543,6 +629,7 @@ impl Parser {
               imported,
               span: Span::new(local_start.start, end),
               is_default: false,
+              is_namespace: false,
             });
             if self.peek().kind == TokenKind::Comma {
               self.advance();
@@ -609,6 +696,59 @@ impl Parser {
       )
     {
       self.advance();
+      // export type { ... } — skip the entire type-only export
+      if self.peek().kind == TokenKind::OpenBrace {
+        // consume up to matching brace
+        self.advance();
+        while self.peek().kind != TokenKind::CloseBrace && !self.is_at_end() {
+          self.advance();
+        }
+        if self.peek().kind == TokenKind::CloseBrace {
+          self.advance();
+        }
+        // optional from clause
+        if self.peek().kind == TokenKind::From {
+          self.advance();
+          if matches!(&self.peek().kind, TokenKind::String(_)) {
+            self.advance();
+          }
+        }
+        self.maybe_semicolon();
+        let end = self.last_end();
+        return Statement::ExportDeclaration {
+          declaration: Box::new(Statement::ExpressionStatement {
+            expression: Box::new(Expression::Placeholder { span: Span::new(start, end) }),
+            span: Span::new(start, end),
+          }),
+          is_default: false,
+          span: Span::new(start, end),
+        };
+      }
+    }
+    // export * from "source"
+    if self.peek().kind == TokenKind::Star {
+      self.advance(); // consume *
+      self.expect(TokenKind::From);
+      let source = if let TokenKind::String(s) = &self.peek().kind {
+        let s = s.clone();
+        self.advance();
+        s
+      } else {
+        self.expect(TokenKind::String(String::new()));
+        String::new()
+      };
+      self.maybe_semicolon();
+      let end = self.last_end();
+      return Statement::ExportDeclaration {
+        declaration: Box::new(Statement::ImportDeclaration {
+          specifiers: vec![],
+          source,
+          is_type: false,
+          span: Span::new(start, end),
+        }),
+        is_default: false,
+        span: Span::new(start, end),
+      };
     }
     if self.peek().kind == TokenKind::Default {
       self.advance();
@@ -635,7 +775,23 @@ impl Parser {
         };
         return Statement::ExportDeclaration {
           declaration: Box::new(decl),
+          is_default: true,
           span: Span::new(start, end.end),
+        };
+      }
+      // export default { ... } — parse as expression, not block statement
+      if self.peek().kind == TokenKind::OpenBrace {
+        let expr = self
+          .parse_expression(0)
+          .unwrap_or_else(|| Box::new(Expression::Placeholder { span: self.peek().span }));
+        self.maybe_semicolon();
+        let end = expr.span().end;
+        let expr_stmt =
+          Statement::ExpressionStatement { expression: expr, span: Span::new(start, end) };
+        return Statement::ExportDeclaration {
+          declaration: Box::new(expr_stmt),
+          is_default: true,
+          span: Span::new(start, end),
         };
       }
       let decl = self.parse_statement().unwrap_or_else(|| Statement::ExpressionStatement {
@@ -645,6 +801,7 @@ impl Parser {
       let end = decl.span();
       return Statement::ExportDeclaration {
         declaration: Box::new(decl),
+        is_default: true,
         span: Span::new(start, end.end),
       };
     }
@@ -676,6 +833,7 @@ impl Parser {
           expression: Box::new(expr),
           span: Span::new(depth_start, end),
         }),
+        is_default: false,
         span: Span::new(start, end),
       };
     }
@@ -685,7 +843,11 @@ impl Parser {
       span: self.peek().span,
     });
     let end = decl.span();
-    Statement::ExportDeclaration { declaration: Box::new(decl), span: Span::new(start, end.end) }
+    Statement::ExportDeclaration {
+      declaration: Box::new(decl),
+      is_default: false,
+      span: Span::new(start, end.end),
+    }
   }
 
   pub(super) fn parse_switch_statement(&mut self) -> Statement {
@@ -806,28 +968,59 @@ impl Parser {
     let body = self.parse_block();
     let handler = if self.peek().kind == TokenKind::Catch {
       let catch_start = self.advance().span.start;
-      self.expect(TokenKind::OpenParen);
-      let param = if let TokenKind::Identifier(n) = &self.peek().kind {
-        let n = n.clone();
-        self.advance();
-        n
-      } else {
-        String::new()
-      };
-      let type_ann = if self.peek().kind == TokenKind::Colon {
-        self.advance(); // consume ':'
-        self.parse_type()
-      } else {
-        None
-      };
-      self.expect(TokenKind::CloseParen);
-      let block = self.parse_block();
-      match block {
-        Statement::BlockStatement { body, .. } => {
-          let end = body.last().map_or(self.last_end(), |s| s.span().end);
-          Some(CatchClause { param, type_ann, body, span: Span::new(catch_start, end) })
+      // Bare catch (ES2019): catch { ... } without parameter
+      if self.peek().kind == TokenKind::OpenBrace {
+        let block = self.parse_block();
+        match block {
+          Statement::BlockStatement { body, .. } => {
+            let end = body.last().map_or(self.last_end(), |s| s.span().end);
+            Some(CatchClause {
+              param: None,
+              type_ann: None,
+              body,
+              span: Span::new(catch_start, end),
+            })
+          }
+          _ => {
+            self.diagnostics.push(Diagnostic::error(
+              "E999",
+              "Internal parser error: unexpected state in catch block",
+              self.peek().span,
+            ));
+            None
+          }
         }
-        _ => unreachable!(),
+      } else {
+        self.expect(TokenKind::OpenParen);
+        let param = if let TokenKind::Identifier(n) = &self.peek().kind {
+          let n = n.clone();
+          self.advance();
+          Some(n)
+        } else {
+          None
+        };
+        let type_ann = if self.peek().kind == TokenKind::Colon {
+          self.advance(); // consume ':'
+          self.parse_type()
+        } else {
+          None
+        };
+        self.expect(TokenKind::CloseParen);
+        let block = self.parse_block();
+        match block {
+          Statement::BlockStatement { body, .. } => {
+            let end = body.last().map_or(self.last_end(), |s| s.span().end);
+            Some(CatchClause { param, type_ann, body, span: Span::new(catch_start, end) })
+          }
+          _ => {
+            self.diagnostics.push(Diagnostic::error(
+              "E999",
+              "Internal parser error: unexpected state in catch block",
+              self.peek().span,
+            ));
+            None
+          }
+        }
       }
     } else {
       None
@@ -837,7 +1030,14 @@ impl Parser {
       let block = self.parse_block();
       match block {
         Statement::BlockStatement { body, .. } => Some(body),
-        _ => unreachable!(),
+        _ => {
+          self.diagnostics.push(Diagnostic::error(
+            "E999",
+            "Internal parser error: unexpected state in finally block",
+            self.peek().span,
+          ));
+          None
+        }
       }
     } else {
       None
@@ -1042,6 +1242,141 @@ impl Parser {
     self.expect(TokenKind::CloseBrace);
     let end = self.last_end();
     Statement::EnumDeclaration { name, members, span: Span::new(start, end) }
+  }
+
+  pub(super) fn parse_const_enum_declaration(&mut self) -> Statement {
+    self.advance(); // consume 'const'
+    let start = self.tokens[self.cursor - 1].span.start;
+    self.advance(); // consume 'enum'
+    let name = if let TokenKind::Identifier(n) = &self.peek().kind {
+      let n = n.clone();
+      self.advance();
+      n
+    } else {
+      String::new()
+    };
+    self.expect(TokenKind::OpenBrace);
+    let mut members = Vec::new();
+    while self.peek().kind != TokenKind::CloseBrace && !self.is_at_end() {
+      let member_start = self.peek().span;
+      let member_name = if let TokenKind::Identifier(n) = &self.peek().kind {
+        let n = n.clone();
+        self.advance();
+        n
+      } else {
+        self.advance();
+        continue;
+      };
+      let value = if self.peek().kind == TokenKind::Eq {
+        self.advance();
+        if let TokenKind::String(s) = &self.peek().kind {
+          let s = s.clone();
+          self.advance();
+          Some(s)
+        } else if let TokenKind::Number(n) = &self.peek().kind {
+          let s = (*n as i64).to_string();
+          self.advance();
+          Some(s)
+        } else {
+          None
+        }
+      } else {
+        None
+      };
+      let end = self.last_end();
+      members.push(EnumMember {
+        name: member_name,
+        value,
+        span: Span::new(member_start.start, end),
+      });
+      if self.peek().kind == TokenKind::Comma {
+        self.advance();
+      }
+    }
+    self.expect(TokenKind::CloseBrace);
+    let end = self.last_end();
+    Statement::EnumDeclaration { name, members, span: Span::new(start, end) }
+  }
+
+  pub(super) fn parse_declare_statement(&mut self) -> Statement {
+    let start = self.advance().span.start; // consume 'declare'
+    // declare module "name" { ... }
+    if self.peek().kind == TokenKind::Module {
+      self.advance(); // consume 'module'
+      let name = if let TokenKind::String(s) = &self.peek().kind {
+        let s = s.clone();
+        self.advance();
+        s
+      } else if let TokenKind::Identifier(n) = &self.peek().kind {
+        let n = n.clone();
+        self.advance();
+        n
+      } else {
+        String::new()
+      };
+      let body = if self.peek().kind == TokenKind::OpenBrace {
+        let block = self.parse_block();
+        match block {
+          Statement::BlockStatement { body, .. } => body,
+          _ => {
+            self.diagnostics.push(Diagnostic::error(
+              "E999",
+              "Internal parser error: unexpected state in declare module",
+              self.peek().span,
+            ));
+            Vec::new()
+          }
+        }
+      } else {
+        self.maybe_semicolon();
+        Vec::new()
+      };
+      let end = self.last_end();
+      return Statement::DeclareModule { name, body, span: Span::new(start, end) };
+    }
+    // declare namespace Name { ... }
+    if let TokenKind::Identifier(n) = &self.peek().kind {
+      if n == "namespace" {
+        self.advance(); // consume 'namespace'
+        let name = if let TokenKind::Identifier(n) = &self.peek().kind {
+          let n = n.clone();
+          self.advance();
+          n
+        } else {
+          String::new()
+        };
+        let body = if self.peek().kind == TokenKind::OpenBrace {
+          let block = self.parse_block();
+          match block {
+            Statement::BlockStatement { body, .. } => body,
+            _ => {
+              self.diagnostics.push(Diagnostic::error(
+                "E999",
+                "Internal parser error: unexpected state in declare namespace",
+                self.peek().span,
+              ));
+              Vec::new()
+            }
+          }
+        } else {
+          self.maybe_semicolon();
+          Vec::new()
+        };
+        let end = self.last_end();
+        return Statement::DeclareNamespace { name, body, span: Span::new(start, end) };
+      }
+    }
+    // Fallback: just skip remaining statement
+    let decl = self.parse_statement().unwrap_or_else(|| Statement::ExpressionStatement {
+      expression: Box::new(Expression::Placeholder { span: self.peek().span }),
+      span: self.peek().span,
+    });
+    let end = decl.span();
+    Statement::ExportDeclaration {
+      declaration: Box::new(decl),
+      is_default: false,
+      span: Span::new(start, end.end),
+    }
   }
 
   pub(super) fn parse_interface_declaration(&mut self) -> Statement {

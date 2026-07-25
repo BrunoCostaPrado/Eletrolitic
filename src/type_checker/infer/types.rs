@@ -22,9 +22,18 @@ impl TypeChecker {
             Type::Set { value: Box::new(self.type_ann_to_type(&type_args[0], env)) }
           }
           "Partial" if type_args.len() == 1 => {
-            // ponytail: no optional field markers in Type::Object, so Partial accepts anything
-            let _inner = self.type_ann_to_type(&type_args[0], env);
-            Type::Any
+            let inner = self.type_ann_to_type(&type_args[0], env);
+            match inner {
+              Type::Object { fields } => {
+                let optional_fields: Vec<(String, Type)> = fields
+                  .into_iter()
+                  .map(|(name, ty)| (name, Type::Optional(Box::new(ty))))
+                  .collect();
+                Type::Object { fields: optional_fields }
+              }
+              Type::TypeParam(name, constraint) => Type::TypeParam(name, constraint),
+              _ => Type::Any,
+            }
           }
           "Pick" if type_args.len() == 2 => {
             let inner = self.type_ann_to_type(&type_args[0], env);
@@ -49,6 +58,30 @@ impl TypeChecker {
                   .map(|(k, t)| (k.clone(), t.clone()))
                   .collect();
                 Type::Object { fields: picked }
+              }
+              _ => Type::Any,
+            }
+          }
+          "Omit" if type_args.len() == 2 => {
+            let inner = self.type_ann_to_type(&type_args[0], env);
+            let keys = self.type_ann_to_type(&type_args[1], env);
+            match (inner, keys) {
+              (Type::Object { fields }, Type::Union(key_types)) => {
+                let key_names: Vec<String> = key_types
+                  .into_iter()
+                  .filter_map(|kt| match kt {
+                    Type::Literal(LiteralValue::String(s)) => Some(s),
+                    _ => None,
+                  })
+                  .collect();
+                let omitted: Vec<(String, Type)> =
+                  fields.into_iter().filter(|(k, _)| !key_names.contains(k)).collect();
+                Type::Object { fields: omitted }
+              }
+              (Type::Object { fields }, Type::Literal(LiteralValue::String(s))) => {
+                let omitted: Vec<(String, Type)> =
+                  fields.into_iter().filter(|(k, _)| *k != s).collect();
+                Type::Object { fields: omitted }
               }
               _ => Type::Any,
             }

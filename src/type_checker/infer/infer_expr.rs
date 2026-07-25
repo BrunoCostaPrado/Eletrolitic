@@ -315,6 +315,50 @@ impl TypeChecker {
         self.infer_expression(expression, env);
         self.type_ann_to_type(type_ann, env)
       }
+      Expression::SatisfiesExpression { expression, type_ann, .. } => {
+        self.infer_expression(expression, env);
+        self.type_ann_to_type(type_ann, env)
+      }
+      Expression::TaggedTemplateLiteral { tag, expressions, .. } => {
+        self.infer_expression(tag, env);
+        for expr in expressions {
+          self.infer_expression(expr, env);
+        }
+        Type::String
+      }
+      Expression::ImportMeta { .. } => {
+        // ponytail: import.meta has known properties, return Any for now
+        Type::Any
+      }
+      Expression::ImportCall { source, .. } => {
+        self.infer_expression(source, env);
+        // dynamic import() returns Promise<any> — return Any for now
+        Type::Any
+      }
+      Expression::JsxElement { tag, attributes, children, .. } => {
+        self.infer_expression(tag, env);
+        for attr in attributes {
+          match &attr.value {
+            crate::ast::JsxAttributeValue::Expression(e) => {
+              self.infer_expression(e, env);
+            }
+            crate::ast::JsxAttributeValue::Text(_) => {}
+          }
+        }
+        for child in children {
+          match child {
+            crate::ast::JsxChild::Expression(e) => {
+              self.infer_expression(e, env);
+            }
+            crate::ast::JsxChild::Element(e) => {
+              self.infer_expression(e, env);
+            }
+            crate::ast::JsxChild::Text(_) => {}
+          }
+        }
+        // JSX returns JSX.Element at runtime — return Any for now
+        Type::Any
+      }
     }
   }
 
@@ -550,6 +594,7 @@ pub(crate) fn substitute_type_params(ty: &Type, bindings: &[(String, Type)]) -> 
     Type::Tuple(elems) => {
       Type::Tuple(elems.iter().map(|e| substitute_type_params(e, bindings)).collect())
     }
+    Type::Optional(inner) => Type::Optional(Box::new(substitute_type_params(inner, bindings))),
     Type::Function { params, return_type } => Type::Function {
       params: params.iter().map(|p| substitute_type_params(p, bindings)).collect(),
       return_type: Box::new(substitute_type_params(return_type, bindings)),

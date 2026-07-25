@@ -2,21 +2,24 @@
 	"name": "ferrite",
 	"version": "0.1.0",
 	"description": "TypeScript compiler powered by Rust",
-	"main": "dist/ferrite.js",
-	"types": "dist/ferrite.d.ts",
+	"main": "dist/ferrite.mjs",
+	"types": "dist/ferrite.d.mts",
 	"exports": {
 		".": {
-			"types": "./dist/ferrite.d.ts",
-			"default": "./dist/ferrite.js"
+			"types": "./dist/ferrite.d.mts",
+			"default": "./dist/ferrite.mjs"
 		}
 	},
 	"bin": {
-		"ferrite": "dist/src/cli.js"
+		"ferrite": "./bin/ferrite.cjs"
 	},
 	"files": [
-		"dist",
-		"bin"
+		"dist/**/*",
+		"bin/**/*"
 	],
+	"engines": {
+		"node": ">=16"
+	},
 	"scripts": {
 		"build": "tsdown",
 		"lint": "biome check --write .",

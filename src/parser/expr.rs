@@ -2,6 +2,7 @@ use crate::ast::{
   ArrowFunctionBody, AssignmentOp, BinaryOp, Expression, Parameter, Property, PropertyKey,
   Statement, TypeAnn, UnaryOp,
 };
+use crate::diagnostic::Diagnostic;
 use crate::parser::Parser;
 use crate::token::{Span, Token, TokenKind};
 
@@ -27,7 +28,11 @@ pub(crate) fn get_infix_led(kind: &TokenKind) -> Option<(u8, bool)> {
     | TokenKind::SlashEq
     | TokenKind::PercentEq
     | TokenKind::AmpEq
-    | TokenKind::PipeEq => Some((1, true)),
+    | TokenKind::PipeEq
+    | TokenKind::QuestionQuestionEq
+    | TokenKind::AmpAmpEq
+    | TokenKind::PipePipeEq
+    | TokenKind::CaretEq => Some((1, true)),
     _ => None,
   }
 }
@@ -161,6 +166,71 @@ pub fn parse_expression(p: &mut Parser, min_prec: u8) -> Option<Box<Expression>>
       break;
     }
 
+    // Handle template literal after expression (tagged template): expr`...`
+    if matches!(kind, TokenKind::NoSubstitutionTemplate(_) | TokenKind::TemplateHead(_)) {
+      // Tagged template literal
+      let mut quasis = Vec::new();
+      let mut expressions = Vec::new();
+      match &kind {
+        TokenKind::NoSubstitutionTemplate(text) => {
+          quasis.push(text.clone());
+          p.advance();
+          let span = Span::new(left.span().start, p.last_end());
+          left =
+            Box::new(Expression::TaggedTemplateLiteral { tag: left, quasis, expressions, span });
+          continue;
+        }
+        TokenKind::TemplateHead(text) => {
+          quasis.push(text.clone());
+          p.advance();
+          if let Some(expr) = parse_expression(p, 0) {
+            expressions.push(expr);
+          }
+          loop {
+            match &p.peek().kind {
+              TokenKind::TemplateMiddle(t) => {
+                quasis.push(t.clone());
+                p.advance();
+                if let Some(expr) = parse_expression(p, 0) {
+                  expressions.push(expr);
+                }
+              }
+              TokenKind::TemplateTail(t) => {
+                quasis.push(t.clone());
+                p.advance();
+                let span = Span::new(left.span().start, p.last_end());
+                left = Box::new(Expression::TaggedTemplateLiteral {
+                  tag: left,
+                  quasis,
+                  expressions,
+                  span,
+                });
+                break;
+              }
+              _ => {
+                let span = Span::new(left.span().start, p.peek().span.start);
+                left = Box::new(Expression::TaggedTemplateLiteral {
+                  tag: left,
+                  quasis,
+                  expressions,
+                  span,
+                });
+                break;
+              }
+            }
+          }
+          continue;
+        }
+        _ => {
+          p.diagnostics.push(Diagnostic::error(
+            "E999",
+            "Internal parser error: unexpected state in template literal",
+            p.peek().span,
+          ));
+          break;
+        }
+      }
+    }
     // Handle ternary (?:)
     if kind == TokenKind::Question && p.peek_ahead(1).kind != TokenKind::Question {
       if 1 >= min_prec {
@@ -191,6 +261,10 @@ pub fn parse_expression(p: &mut Parser, min_prec: u8) -> Option<Box<Expression>>
           | TokenKind::PercentEq
           | TokenKind::AmpEq
           | TokenKind::PipeEq
+          | TokenKind::QuestionQuestionEq
+          | TokenKind::AmpAmpEq
+          | TokenKind::PipePipeEq
+          | TokenKind::CaretEq
       );
       if is_assign {
         p.advance();
@@ -203,7 +277,18 @@ pub fn parse_expression(p: &mut Parser, min_prec: u8) -> Option<Box<Expression>>
           TokenKind::PercentEq => AssignmentOp::ModAssign,
           TokenKind::AmpEq => AssignmentOp::BitAndAssign,
           TokenKind::PipeEq => AssignmentOp::BitOrAssign,
-          _ => unreachable!(),
+          TokenKind::QuestionQuestionEq => AssignmentOp::NullishAssign,
+          TokenKind::AmpAmpEq => AssignmentOp::AndAssign,
+          TokenKind::PipePipeEq => AssignmentOp::OrAssign,
+          TokenKind::CaretEq => AssignmentOp::BitXorAssign,
+          _ => {
+            p.diagnostics.push(Diagnostic::error(
+              "E999",
+              "Internal parser error: unexpected assignment operator",
+              p.peek().span,
+            ));
+            AssignmentOp::Assign
+          }
         };
         let right = parse_expression(p, if is_right { prec } else { prec + 1 })?;
         let span = Span::new(left.span().start, right.span().end);
@@ -226,6 +311,18 @@ pub fn parse_expression(p: &mut Parser, min_prec: u8) -> Option<Box<Expression>>
     let type_ann = p.parse_type().unwrap_or(TypeAnn::Any);
     let end = p.last_end();
     left = Box::new(Expression::AsExpression {
+      expression: left,
+      type_ann,
+      span: Span::new(start, end),
+    });
+  }
+  // Handle `x satisfies Type`
+  if p.peek().kind == TokenKind::Satisfies {
+    let start = left.span().start;
+    p.advance(); // consume 'satisfies'
+    let type_ann = p.parse_type().unwrap_or(TypeAnn::Any);
+    let end = p.last_end();
+    left = Box::new(Expression::SatisfiesExpression {
       expression: left,
       type_ann,
       span: Span::new(start, end),
@@ -260,7 +357,7 @@ fn binary_op_from_token(kind: &TokenKind) -> BinaryOp {
     TokenKind::Percent => BinaryOp::Rem,
     TokenKind::StarStar => BinaryOp::Exp,
     TokenKind::Instanceof => BinaryOp::Instanceof,
-    _ => unreachable!(),
+    _ => BinaryOp::Add,
   }
 }
 
@@ -449,6 +546,30 @@ fn parse_prefix(p: &mut Parser) -> Option<Box<Expression>> {
                 span: prop_start,
               });
             }
+          } else if kind.is_reserved_for_property_key() {
+            // Keyword as property key — treat as identifier
+            let kw_str = format!("{}", kind);
+            p.advance();
+            if p.peek().kind == TokenKind::Colon {
+              p.advance();
+              let value = parse_expression(p, 0)?;
+              let end = value.span().end;
+              properties.push(Property {
+                key: PropertyKey::Identifier(kw_str),
+                value,
+                shorthand: false,
+                is_spread: false,
+                span: Span::new(prop_start.start, end),
+              });
+            } else {
+              properties.push(Property {
+                key: PropertyKey::Identifier(kw_str.clone()),
+                value: Box::new(Expression::Identifier { name: kw_str, span: prop_start }),
+                shorthand: false,
+                is_spread: false,
+                span: prop_start,
+              });
+            }
           } else {
             p.advance();
             continue;
@@ -526,7 +647,7 @@ fn parse_prefix(p: &mut Parser) -> Option<Box<Expression>> {
         TokenKind::TypeOf => UnaryOp::TypeOf,
         TokenKind::Void => UnaryOp::Void,
         TokenKind::Delete => UnaryOp::Delete,
-        _ => unreachable!(),
+        _ => UnaryOp::Plus,
       };
       let operand = parse_expression(p, 15)?;
       let start = p.last_start();
@@ -600,6 +721,30 @@ fn parse_prefix(p: &mut Parser) -> Option<Box<Expression>> {
       let span = Span::new(start, argument.span().end);
       Some(Box::new(Expression::AwaitExpression { argument, span }))
     }
+    TokenKind::Import => {
+      let start = p.advance().span.start;
+      if p.peek().kind == TokenKind::Dot {
+        p.advance(); // consume '.'
+        // Check for 'meta'
+        if let TokenKind::Identifier(n) = &p.peek().kind {
+          if n == "meta" {
+            let meta_span = p.advance().span;
+            let end = meta_span.end;
+            return Some(Box::new(Expression::ImportMeta { span: Span::new(start, end) }));
+          }
+        }
+      }
+      // import("source") dynamic import
+      if p.peek().kind == TokenKind::OpenParen {
+        p.advance(); // consume (
+        let source = parse_expression(p, 0)
+          .unwrap_or_else(|| Box::new(Expression::Placeholder { span: p.peek().span }));
+        p.expect(TokenKind::CloseParen);
+        let end = p.last_end();
+        return Some(Box::new(Expression::ImportCall { source, span: Span::new(start, end) }));
+      }
+      None
+    }
     TokenKind::New => {
       let start = p.advance().span.start;
       // Parse callee — could be dotted: new Error, new foo.Bar
@@ -642,6 +787,11 @@ fn parse_prefix(p: &mut Parser) -> Option<Box<Expression>> {
         arguments: args,
         span: Span::new(start, end),
       }))
+    }
+    // JSX: <Tag ...> or <Tag ... />
+    // At prefix position < is always JSX (no left operand for comparison)
+    TokenKind::Lt if matches!(p.peek_ahead(1).kind, TokenKind::Identifier(_)) => {
+      Some(parse_jsx_element(p))
     }
     _ => None,
   }
@@ -714,7 +864,10 @@ fn parse_arrow_body(p: &mut Parser) -> (ArrowFunctionBody, usize) {
     let block = p.parse_block();
     match block {
       Statement::BlockStatement { body, span, .. } => (ArrowFunctionBody::Block(body), span.end),
-      _ => unreachable!(),
+      _ => {
+        let span = p.peek().span;
+        (ArrowFunctionBody::Expression(Box::new(Expression::Placeholder { span })), span.end)
+      }
     }
   } else if let Some(expr) = parse_expression(p, 1) {
     let end = expr.span().end;
@@ -723,5 +876,155 @@ fn parse_arrow_body(p: &mut Parser) -> (ArrowFunctionBody, usize) {
     // Fallback: empty body
     let span = p.peek().span;
     (ArrowFunctionBody::Expression(Box::new(Expression::Placeholder { span })), span.end)
+  }
+}
+
+fn parse_jsx_element(p: &mut Parser) -> Box<Expression> {
+  use crate::ast::{JsxAttribute, JsxAttributeValue};
+  let start = p.peek().span.start;
+  p.advance(); // consume <
+  // Tag name
+  let tag = if let TokenKind::Identifier(n) = &p.peek().kind {
+    let n = n.clone();
+    let span = p.advance().span;
+    Box::new(Expression::Identifier { name: n, span })
+  } else {
+    return Box::new(Expression::Placeholder { span: p.peek().span });
+  };
+
+  let mut attributes = Vec::new();
+  let mut children = Vec::new();
+  let mut self_closing = false;
+
+  // Parse attributes until > or />
+  loop {
+    match &p.peek().kind {
+      TokenKind::Gt => {
+        p.advance();
+        break;
+      }
+      TokenKind::Slash if matches!(p.peek_ahead(1).kind, TokenKind::Gt) => {
+        p.advance(); // /
+        p.advance(); // >
+        self_closing = true;
+        break;
+      }
+      TokenKind::Identifier(name) => {
+        let attr_name = name.clone();
+        let attr_start = p.peek().span.start;
+        p.advance();
+        if p.peek().kind == TokenKind::Eq {
+          p.advance(); // =
+          let value = if let TokenKind::String(s) = &p.peek().kind {
+            let s = s.clone();
+            p.advance();
+            JsxAttributeValue::Text(s)
+          } else if p.peek().kind == TokenKind::OpenBrace {
+            p.advance(); // {
+            let expr = p
+              .parse_expression(0)
+              .unwrap_or_else(|| Box::new(Expression::Placeholder { span: p.peek().span }));
+            if p.peek().kind == TokenKind::CloseBrace {
+              p.advance(); // }
+            }
+            JsxAttributeValue::Expression(expr)
+          } else {
+            JsxAttributeValue::Text(String::new())
+          };
+          attributes.push(JsxAttribute {
+            name: attr_name,
+            value,
+            span: Span::new(attr_start, p.last_end()),
+          });
+        } else {
+          // Boolean attribute: <Comp disabled />
+          attributes.push(JsxAttribute {
+            name: attr_name,
+            value: JsxAttributeValue::Expression(Box::new(Expression::BooleanLiteral {
+              value: true,
+              span: p.peek().span,
+            })),
+            span: Span::new(attr_start, p.last_end()),
+          });
+        }
+      }
+      _ => {
+        // Skip unexpected tokens (e.g., whitespace artifacts)
+        p.advance();
+        continue;
+      }
+    }
+  }
+
+  // Parse children until closing tag
+  if !self_closing {
+    loop {
+      match &p.peek().kind {
+        TokenKind::Lt if matches!(p.peek_ahead(1).kind, TokenKind::Slash) => {
+          // Closing tag: </Tag>
+          p.advance(); // <
+          p.advance(); // /
+          // Skip tag name identifier
+          if matches!(p.peek().kind, TokenKind::Identifier(_)) {
+            p.advance();
+          }
+          p.advance(); // >
+          break;
+        }
+        TokenKind::Eof => break,
+        _ => {
+          if let Some(child) = parse_jsx_child(p) {
+            children.push(child);
+          } else {
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  let end = p.last_end();
+  Box::new(Expression::JsxElement {
+    tag,
+    attributes,
+    children,
+    self_closing,
+    span: Span::new(start, end),
+  })
+}
+
+fn parse_jsx_child(p: &mut Parser) -> Option<crate::ast::JsxChild> {
+  use crate::ast::JsxChild;
+  match &p.peek().kind {
+    // Nested JSX element
+    TokenKind::Lt if matches!(p.peek_ahead(1).kind, TokenKind::Identifier(_)) => {
+      Some(JsxChild::Element(parse_jsx_element(p)))
+    }
+    // Expression child: {expr}
+    TokenKind::OpenBrace => {
+      p.advance(); // {
+      let expr = parse_expression(p, 0)?;
+      if p.peek().kind == TokenKind::CloseBrace {
+        p.advance(); // }
+      }
+      Some(JsxChild::Expression(expr))
+    }
+    // Text content — extract raw source between current pos and next < or {
+    _ => {
+      let text_start = p.peek().span.start;
+      while !matches!(p.peek().kind, TokenKind::Lt | TokenKind::OpenBrace | TokenKind::Eof) {
+        p.advance();
+      }
+      let text_end = p.last_end();
+      if text_start >= text_end {
+        return None;
+      }
+      // Extract from source to preserve whitespace between tokens
+      let text = p.source_file.source[text_start..text_end].trim().to_string();
+      if text.is_empty() {
+        return None;
+      }
+      Some(JsxChild::Text(text))
+    }
   }
 }
