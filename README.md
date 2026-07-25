@@ -1,4 +1,4 @@
-# Ferrite
+# Eletrolitic
 
 TypeScript-to-JavaScript compiler written in Rust. Drop-in replacement for `tsc` — outputs `.js`, `.js.map`, and `.d.ts` files with automatic config detection.
 
@@ -11,22 +11,22 @@ cargo install --path .
 Or use the npm package (ships the binary):
 
 ```bash
-npm install ferrite
+npm install eletrolitic
 ```
 
 ## Usage
 
 ```bash
 # Compile a file
-ferrite src/index.ts
+eletrolitic src/index.ts
 
 # With explicit tsconfig
-ferrite src/index.ts --tsconfig ./tsconfig.json
+eletrolitic src/index.ts --tsconfig ./tsconfig.json
 
-# Use ferrite.config.ts (auto-detected in cwd)
-ferrite build
-ferrite compile        # alias
-ferrite                # uses entry from config
+# Use eletrolitic.config.ts (auto-detected in cwd)
+eletrolitic build
+eletrolitic compile        # alias
+eletrolitic                # uses entry from config
 ```
 
 ### CLI flags
@@ -43,10 +43,10 @@ ferrite                # uses entry from config
 
 ## Config
 
-Create `ferrite.config.ts` in your project root:
+Create `eletrolitic.config.ts` in your project root:
 
 ```ts
-import { defineConfig } from "ferrite"
+import { defineConfig } from "eletrolitic"
 
 export default defineConfig({
   entry: ["src/index.ts"],
@@ -58,7 +58,7 @@ export default defineConfig({
 })
 ```
 
-All fields are optional. Without a config file, ferrite compiles the file you pass on the CLI.
+All fields are optional. Without a config file, eletrolitic compiles the file you pass on the CLI.
 
 ### Supported config fields
 
@@ -79,7 +79,7 @@ All fields are optional. Without a config file, ferrite compiles the file you pa
 
 ### tsconfig.json
 
-Ferrite walks up the directory tree looking for `tsconfig.json`. It strips comments (JSONC format), reads `compilerOptions`, and resolves path aliases. You can point to a specific file with `--tsconfig`.
+eletrolitic walks up the directory tree looking for `tsconfig.json`. It strips comments (JSONC format), reads `compilerOptions`, and resolves path aliases. You can point to a specific file with `--tsconfig`.
 
 ## Features
 
@@ -113,15 +113,15 @@ Source maps and declarations can be disabled via config.
 ### Basic compilation
 ```bash
 # Single file — no config needed
-ferrite src/index.ts
+eletrolitic src/index.ts
 
 # Output: src/index.js, src/index.js.map, src/index.d.ts
 ```
 
 ### With config
 ```ts
-// ferrite.config.ts
-import { defineConfig } from "ferrite"
+// eletrolitic.config.ts
+import { defineConfig } from "eletrolitic"
 
 export default defineConfig({
   entry: ["src/index.ts", "src/utils.ts"],
@@ -137,7 +137,7 @@ export default defineConfig({
 
 ### CommonJS output
 ```bash
-ferrite src/index.ts --format cjs
+eletrolitic src/index.ts --format cjs
 # Or in config: format: "cjs"
 ```
 
@@ -175,7 +175,7 @@ Source (.ts) → Lexer → Parser → AST → Type Checker → Codegen → JS + 
 
 ## Performance
 
-Ferrite is designed for speed:
+eletrolitic is designed for speed:
 
 - **No project references** — Compiles files independently, no dependency graph
 - **Parallel compilation** — Multiple files compile in parallel (when using config)
@@ -186,7 +186,7 @@ Typical performance: ~10-50x faster than `tsc` for single-file compilation.
 
 ## Comparison with tsc
 
-| Feature | Ferrite | tsc |
+| Feature | eletrolitic | tsc |
 |---------|---------|-----|
 | Speed | ~10-50x faster | Baseline |
 | Type checking | Partial (growing) | Full |
@@ -198,7 +198,7 @@ Typical performance: ~10-50x faster than `tsc` for single-file compilation.
 | Incremental builds | No | Yes |
 | Watch mode | No | Yes |
 
-**Use Ferrite when:** You need fast compilation, are okay with partial type checking, or want a lightweight alternative to tsc.
+**Use eletrolitic when:** You need fast compilation, are okay with partial type checking, or want a lightweight alternative to tsc.
 
 **Use tsc when:** You need full type checking, project references, or incremental builds.
 
@@ -227,8 +227,8 @@ cargo fmt           # format
 ### Development setup
 
 ```bash
-git clone https://github.com/your-username/ferrite.git
-cd ferrite
+git clone https://github.com/your-username/eletrolitic.git
+cd eletrolitic
 cargo build
 cargo test
 ```

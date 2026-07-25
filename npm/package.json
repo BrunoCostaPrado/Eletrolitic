@@ -11,7 +11,7 @@
 		}
 	},
 	"bin": {
-		"eletrolitic": "./bin/eletrolitic.cjs"
+		"eletrolitic": "bin/eletrolitic.cjs"
 	},
 	"files": [
 		"dist/**/*",
