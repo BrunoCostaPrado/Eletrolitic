@@ -1,14 +1,14 @@
 [package]
-name = "ferrite"
+name = "eletrolitic"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "ferrite"
+name = "eletrolitic"
 crate-type = ["rlib"]
 
 [[bin]]
-name = "ferrite"
+name = "eletrolitic"
 path = "src/main.rs"
 
 [dependencies]

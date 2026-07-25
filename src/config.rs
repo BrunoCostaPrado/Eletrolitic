@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-/// Ferrite build config (from ferrite.config.ts / ferrite.config.json).
+/// Electrolitic build config (from electrolitic.config.ts / electrolitic.config.json).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FerriteConfig {
+pub struct ElectroliticConfig {
   pub entry: Option<Vec<String>>,
   pub out_dir: Option<String>,
   pub format: Option<String>,
@@ -178,11 +178,11 @@ pub fn resolve_path_alias(
   None
 }
 
-/// Try to load ferrite.config.ts or ferrite.config.json from a directory.
+/// Try to load electrolitic.config.ts or electrolitic.config.json from a directory.
 /// Returns (config, dir) if found, None otherwise.
-pub fn load_ferrite_config(dir: &Path) -> Option<(FerriteConfig, PathBuf)> {
+pub fn load_electrolitic_config(dir: &Path) -> Option<(ElectroliticConfig, PathBuf)> {
   // Try .ts first, then .json
-  for name in &["ferrite.config.ts", "ferrite.config.js", "ferrite.config.json"] {
+  for name in &["electrolitic.config.ts", "electrolitic.config.js", "electrolitic.config.json"] {
     let path = dir.join(name);
     if let Ok(content) = std::fs::read_to_string(&path) {
       let json = if name.ends_with(".json") {
@@ -194,7 +194,7 @@ pub fn load_ferrite_config(dir: &Path) -> Option<(FerriteConfig, PathBuf)> {
           None => continue,
         }
       };
-      if let Ok(cfg) = serde_json::from_str::<FerriteConfig>(&json) {
+      if let Ok(cfg) = serde_json::from_str::<ElectroliticConfig>(&json) {
         return Some((cfg, dir.to_path_buf()));
       }
     }
@@ -368,7 +368,7 @@ mod tests {
 
   #[test]
   fn extract_define_config_basic() {
-    let content = r#"import { defineConfig } from "ferrite"
+    let content = r#"import { defineConfig } from "electrolitic"
 
 export default defineConfig({
   entry: ["src/index.ts"],
@@ -377,14 +377,14 @@ export default defineConfig({
 "#;
     let result = extract_define_config(content).expect("should extract");
     eprintln!("JSON: {result}");
-    let cfg: FerriteConfig = serde_json::from_str(&result).expect("should parse");
+    let cfg: ElectroliticConfig = serde_json::from_str(&result).expect("should parse");
     assert_eq!(cfg.entry.as_ref().unwrap(), &vec!["src/index.ts".to_string()]);
     assert_eq!(cfg.splitting, Some(false));
   }
 
   #[test]
   fn extract_define_config_nested() {
-    let content = r#"import { defineConfig } from "ferrite"
+    let content = r#"import { defineConfig } from "electrolitic"
 
 export default defineConfig({
   entry: ["src/index.ts"],
@@ -405,7 +405,7 @@ export default defineConfig({
 "#;
     let result = extract_define_config(content).expect("should extract");
     eprintln!("JSON: {result}");
-    let cfg: FerriteConfig = serde_json::from_str(&result).expect("should parse");
+    let cfg: ElectroliticConfig = serde_json::from_str(&result).expect("should parse");
     assert_eq!(cfg.entry.as_ref().unwrap(), &vec!["src/index.ts".to_string()]);
   }
 

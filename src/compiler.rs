@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::ast::{Expression, Statement};
 use crate::codegen::Codegen;
-use crate::config::{self, CompilerOptions, FerriteConfig};
+use crate::config::{self, CompilerOptions, ElectroliticConfig};
 use crate::decl_emit;
 use crate::diagnostic::{Severity, SourceFile};
 use crate::lexer::Lexer;
@@ -25,10 +25,10 @@ pub struct Compiler {
   options: CompilerOptions,
   /// Project root directory (for resolving path aliases against `base_url`).
   root_dir: PathBuf,
-  /// Output directory (from ferrite.config — if set, outputs go here instead of next to source).
+  /// Output directory (from electrolitic.config — if set, outputs go here instead of next to source).
   out_dir: Option<PathBuf>,
-  /// Parsed ferrite.config (entry, outDir, dts, minify, strict, etc.).
-  ferrite_cfg: Option<FerriteConfig>,
+  /// Parsed electrolitic.config (entry, outDir, dts, minify, strict, etc.).
+  electrolitic_cfg: Option<ElectroliticConfig>,
 }
 
 impl Compiler {
@@ -43,14 +43,14 @@ impl Compiler {
     let mut compiler = Self::new();
     let entry_path =
       std::fs::canonicalize(entry).map_err(|e| vec![format!("Cannot resolve '{entry}': {e}")])?;
-    // Load ferrite.config.ts/js/json (walk up from entry's directory)
+    // Load electrolitic.config.ts/js/json (walk up from entry's directory)
     let mut search_dir = entry_path.parent().map(|p| p.to_path_buf());
     while let Some(ref dir) = search_dir {
-      if let Some((cfg, cfg_dir)) = config::load_ferrite_config(dir) {
+      if let Some((cfg, cfg_dir)) = config::load_electrolitic_config(dir) {
         if let Some(out) = &cfg.out_dir {
           compiler.out_dir = Some(cfg_dir.join(out));
         }
-        compiler.ferrite_cfg = Some(cfg);
+        compiler.electrolitic_cfg = Some(cfg);
         break;
       }
       if !search_dir.as_mut().unwrap().pop() {
@@ -63,8 +63,8 @@ impl Compiler {
       compiler.options = opts;
       compiler.root_dir = found_dir;
     }
-    // Ferrite config overrides tsconfig settings
-    if let Some(ref cfg) = compiler.ferrite_cfg {
+    // Electrolitic config overrides tsconfig settings
+    if let Some(ref cfg) = compiler.electrolitic_cfg {
       if let Some(ref t) = cfg.target {
         compiler.options.target = Some(t.clone());
       }
@@ -251,7 +251,7 @@ impl Compiler {
       let source_name = source_rel.to_string_lossy().replace('\\', "/");
       let mut source_map = SourceMap::new(&source_file.source, &source_name, Some(&source_file.source));
       let mut codegen = Codegen::new();
-      if self.ferrite_cfg.as_ref().and_then(|c| c.format.as_deref()) == Some("cjs") {
+      if self.electrolitic_cfg.as_ref().and_then(|c| c.format.as_deref()) == Some("cjs") {
         codegen.cjs = true;
       }
       // Safety: source_map outlives codegen (both on this stack frame)
@@ -265,21 +265,21 @@ impl Compiler {
         path.with_extension("js")
       };
       let js_name = out_path.file_name().unwrap().to_string_lossy().to_string();
-      let js_output = if self.ferrite_cfg.as_ref().and_then(|c| c.minify) == Some(true) {
+      let js_output = if self.electrolitic_cfg.as_ref().and_then(|c| c.minify) == Some(true) {
         minify_js(&codegen.output)
       } else {
         codegen.output
       };
       outputs.push((out_path.to_string_lossy().to_string(), js_output));
-      // Source map (skip if sourcemap: false in ferrite.config)
-      let emit_map = self.ferrite_cfg.as_ref().and_then(|c| c.sourcemap) != Some(false);
+      // Source map (skip if sourcemap: false in electrolitic.config)
+      let emit_map = self.electrolitic_cfg.as_ref().and_then(|c| c.sourcemap) != Some(false);
       if emit_map {
         let map_json = source_map.to_json(&js_name);
         outputs.push((map_path.to_string_lossy().to_string(), map_json));
       }
 
-      // Declaration emit (skip if dts: false in ferrite.config)
-      let emit_dts = self.ferrite_cfg.as_ref().and_then(|c| c.dts).unwrap_or(true);
+      // Declaration emit (skip if dts: false in electrolitic.config)
+      let emit_dts = self.electrolitic_cfg.as_ref().and_then(|c| c.dts).unwrap_or(true);
       if emit_dts {
         let dts = decl_emit::emit_declarations(&program);
         let dts_path = if let Some(ref out_dir) = self.out_dir {

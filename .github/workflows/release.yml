@@ -28,19 +28,19 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            bin: ferrite
+            bin: eletrolitic
             platform: linux-x64
           - target: x86_64-apple-darwin
             os: macos-13
-            bin: ferrite
+            bin: eletrolitic
             platform: darwin-x64
           - target: aarch64-apple-darwin
             os: macos-14
-            bin: ferrite
+            bin: eletrolitic
             platform: darwin-arm64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            bin: ferrite.exe
+            bin: eletrolitic.exe
             platform: win32-x64
 
     runs-on: ${{ matrix.os }}
@@ -67,13 +67,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      id-token: write   # required for npm OIDC trusted publishing
+      attestations: write  # required for provenance
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
       # Download each platform binary into its own subdir
       - uses: actions/download-artifact@v4
         with:
@@ -96,8 +98,6 @@ jobs:
       - name: Build npm package
         working-directory: npm
         run: npm install && npm run build
-      - name: Publish
+      - name: Publish (OIDC — no token needed)
         working-directory: npm
-        run: npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public

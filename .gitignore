@@ -24,9 +24,9 @@ npm/tsconfig.tsbuildinfo
 __pycache__/
 *.pyc
 
-# Build output
-*.js
-*.js.map
+# Build output (root only — npm/bin/*.cjs must stay)
+/*.js
+/*.js.map
 
 # Stale
 error.txt

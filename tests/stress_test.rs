@@ -1,8 +1,8 @@
-use ferrite::codegen::Codegen;
-use ferrite::diagnostic::SourceFile;
-use ferrite::lexer::Lexer;
-use ferrite::parser::Parser;
-use ferrite::type_checker::{TypeChecker, env::TypeEnv};
+use electrolitic::codegen::Codegen;
+use electrolitic::diagnostic::SourceFile;
+use electrolitic::lexer::Lexer;
+use electrolitic::parser::Parser;
+use electrolitic::type_checker::{TypeChecker, env::TypeEnv};
 
 /// Full pipeline: lex → parse → typecheck → codegen
 fn pipeline(source: &str) -> PipelineResult {
@@ -925,7 +925,7 @@ fn stress_lexer_all_token_types() {
   assert!(!tokens.is_empty());
   // Only # should be unknown
   let unknown_count =
-    tokens.iter().filter(|t| matches!(t.kind, ferrite::token::TokenKind::Unknown(_))).count();
+    tokens.iter().filter(|t| matches!(t.kind, electrolitic::token::TokenKind::Unknown(_))).count();
   assert!(unknown_count <= 1); // just #
 }
 
@@ -2801,22 +2801,22 @@ fn stress_utility_pick() {
 
 #[test]
 fn stress_compile_real_config_file() {
-  // Read the actual test/ferrite.config.ts file
+  // Read the actual test/electrolitic.config.ts file
   let path =
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("test").join("ferrite.config.ts");
-  let src = std::fs::read_to_string(&path).expect("failed to read test/ferrite.config.ts");
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("test").join("electrolitic.config.ts");
+  let src = std::fs::read_to_string(&path).expect("failed to read test/electrolitic.config.ts");
   let mut lexer = Lexer::new(&src);
   let tokens = lexer.tokenize().to_vec();
   let lex_diags = lexer.into_diagnostics();
   let lex_errors: Vec<_> =
-    lex_diags.iter().filter(|d| d.severity == ferrite::diagnostic::Severity::Error).collect();
-  let source_file = SourceFile::new("ferrite.config.ts", &src);
+    lex_diags.iter().filter(|d| d.severity == electrolitic::diagnostic::Severity::Error).collect();
+  let source_file = SourceFile::new("electrolitic.config.ts", &src);
   let mut parser = Parser::new(tokens, source_file);
   let program = parser.parse();
   let parse_diags: Vec<_> = parser
     .diagnostics()
     .iter()
-    .filter(|d| d.severity == ferrite::diagnostic::Severity::Error)
+    .filter(|d| d.severity == electrolitic::diagnostic::Severity::Error)
     .collect();
   let mut checker = TypeChecker::new();
   let mut env = TypeEnv::new();

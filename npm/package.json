@@ -1,5 +1,5 @@
 {
-	"name": "ferrite",
+	"name": "@redbruno/eletrolitic",
 	"version": "0.1.0",
 	"description": "TypeScript compiler powered by Rust",
 	"main": "dist/ferrite.mjs",
@@ -11,7 +11,7 @@
 		}
 	},
 	"bin": {
-		"ferrite": "./bin/ferrite.cjs"
+		"eletrolitic": "./bin/eletrolitic.cjs"
 	},
 	"files": [
 		"dist/**/*",
@@ -30,6 +30,14 @@
 		"compiler",
 		"rust"
 	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/BrunoCostaPrado/Basalt.git"
+	},
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	},
 	"author": "",
 	"license": "ISC",
 	"type": "module",

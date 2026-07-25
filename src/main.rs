@@ -1,10 +1,10 @@
-use ferrite::compiler::Compiler;
-use ferrite::config;
+use electrolitic::compiler::Compiler;
+use electrolitic::config;
 use std::time::Instant;
 
-/// Get or create a FerriteConfig, returning a mutable reference.
-fn ensure_cfg<'a>(cfg: &'a mut Option<(ferrite::config::FerriteConfig, std::path::PathBuf)>, cwd: &std::path::Path) -> &'a mut ferrite::config::FerriteConfig {
-  &mut cfg.get_or_insert_with(|| (ferrite::config::FerriteConfig::default(), cwd.to_path_buf())).0
+/// Get or create an ElectroliticConfig, returning a mutable reference.
+fn ensure_cfg<'a>(cfg: &'a mut Option<(electrolitic::config::ElectroliticConfig, std::path::PathBuf)>, cwd: &std::path::Path) -> &'a mut electrolitic::config::ElectroliticConfig {
+  &mut cfg.get_or_insert_with(|| (electrolitic::config::ElectroliticConfig::default(), cwd.to_path_buf())).0
 }
 
 fn fmt_size(bytes: usize) -> String {
@@ -24,8 +24,8 @@ fn main() {
   while i < args.len() {
     match args[i].as_str() {
       "--help" | "-h" => {
-        eprintln!("Usage: ferrite [options] [file.ts]");
-        eprintln!("       ferrite build|compile");
+        eprintln!("Usage: electrolitic [options] [file.ts]");
+        eprintln!("       electrolitic build|compile");
         eprintln!();
         eprintln!("Options:");
         eprintln!("  --tsconfig <path>  Path to tsconfig.json");
@@ -36,11 +36,11 @@ fn main() {
         eprintln!("  --help, -h         Show this help");
         eprintln!("  --version, -V      Show version");
         eprintln!();
-        eprintln!("Config: ferrite.config.ts with defineConfig({{ entry: [...] }})");
+        eprintln!("Config: electrolitic.config.ts with defineConfig({{ entry: [...] }})");
         std::process::exit(0);
       }
       "--version" | "-V" => {
-        eprintln!("ferrite 0.1.0");
+        eprintln!("electrolitic 0.1.0");
         std::process::exit(0);
       }
       "--tsconfig" => {
@@ -68,34 +68,34 @@ fn main() {
     i += 1;
   }
 
-  // Auto-detect config: try ferrite.config.ts/js/json in cwd, then entry's dir
-  let mut ferrite_cfg = None;
+  // Auto-detect config: try electrolitic.config.ts/js/json in cwd, then entry's dir
+  let mut electrolitic_cfg = None;
   let cwd = std::env::current_dir().unwrap_or_default();
-  if let Some((cfg, cfg_dir)) = config::load_ferrite_config(&cwd) {
-    eprintln!("\x1b[2mℹ  ferrite\x1b[0m");
-    for name in &["ferrite.config.ts", "ferrite.config.js", "ferrite.config.json"] {
+  if let Some((cfg, cfg_dir)) = config::load_electrolitic_config(&cwd) {
+    eprintln!("\x1b[2mℹ  electrolitic\x1b[0m");
+    for name in &["electrolitic.config.ts", "electrolitic.config.js", "electrolitic.config.json"] {
       if cfg_dir.join(name).exists() {
         eprintln!("\x1b[2mℹ  config file: {}\x1b[0m", cfg_dir.join(name).display());
         break;
       }
     }
-    ferrite_cfg = Some((cfg, cfg_dir));
+    electrolitic_cfg = Some((cfg, cfg_dir));
   }
 
   // CLI flags override config values
   if let Some(dir) = &out_dir {
-    ensure_cfg(&mut ferrite_cfg, &cwd).out_dir = Some(dir.clone());
+    ensure_cfg(&mut electrolitic_cfg, &cwd).out_dir = Some(dir.clone());
   }
   if strict {
-    ensure_cfg(&mut ferrite_cfg, &cwd).strict = Some(true);
+    ensure_cfg(&mut electrolitic_cfg, &cwd).strict = Some(true);
   }
   if let Some(t) = &target {
-    ensure_cfg(&mut ferrite_cfg, &cwd).target = Some(t.clone());
+    ensure_cfg(&mut electrolitic_cfg, &cwd).target = Some(t.clone());
   }
 
-  // If no entry given, get it from ferrite config
+  // If no entry given, get it from electrolitic config
   if entry.is_none() {
-    if let Some((ref cfg, _)) = ferrite_cfg {
+    if let Some((ref cfg, _)) = electrolitic_cfg {
       if let Some(ref entries) = cfg.entry {
         if let Some(first) = entries.first() {
           entry = Some(first.clone());
@@ -105,8 +105,8 @@ fn main() {
   }
 
   let Some(entry) = entry else {
-    eprintln!("Usage: ferrite <file.ts> [--tsconfig <path>]");
-    eprintln!("Or create a ferrite.config.ts with entry points.");
+    eprintln!("Usage: electrolitic <file.ts> [--tsconfig <path>]");
+    eprintln!("Or create a electrolitic.config.ts with entry points.");
     std::process::exit(1);
   };
 
