@@ -1,11 +1,12 @@
 use crate::token::Span;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Program {
   pub body: Vec<Statement>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Parameter {
   pub name: String,
   pub type_ann: Option<TypeAnn>,
@@ -14,7 +15,7 @@ pub struct Parameter {
   pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImportSpecifier {
   pub local: String,
   pub imported: Option<String>,
@@ -23,13 +24,13 @@ pub struct ImportSpecifier {
   pub is_namespace: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ArrowFunctionBody {
   Expression(Box<Expression>),
   Block(Vec<Statement>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Statement {
   ExpressionStatement {
     expression: Box<Expression>,
@@ -166,20 +167,20 @@ pub enum Statement {
   },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ForInit {
   Expression(Box<Expression>),
   VariableDeclaration { kind: VariableKind, declarations: Vec<VariableDeclarator> },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SwitchCase {
   pub test: Option<Box<Expression>>,
   pub body: Vec<Statement>,
   pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CatchClause {
   pub param: Option<String>,
   pub type_ann: Option<TypeAnn>,
@@ -187,21 +188,21 @@ pub struct CatchClause {
   pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClassBody {
   pub methods: Vec<MethodDefinition>,
   pub fields: Vec<ClassField>,
   pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Visibility {
   Public,
   Private,
   Protected,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClassField {
   pub key: PropertyKey,
   pub type_ann: Option<TypeAnn>,
@@ -211,7 +212,7 @@ pub struct ClassField {
   pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MethodDefinition {
   pub key: PropertyKey,
   pub kind: MethodKind,
@@ -223,13 +224,13 @@ pub struct MethodDefinition {
   pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum MethodKind {
   Constructor,
   Method,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EnumMember {
   pub name: String,
   pub value: Option<String>,
@@ -269,21 +270,21 @@ impl Statement {
   }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum VariableKind {
   Let,
   Const,
   Var,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LiteralValue {
   String(String),
   Number(f64),
   Boolean(bool),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TypeAnn {
   Number,
   String,
@@ -347,14 +348,14 @@ pub enum TypeAnn {
   },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObjectTypeProperty {
   pub name: String,
   pub type_ann: TypeAnn,
   pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VariableDeclarator {
   pub id: Box<Expression>,
   pub type_ann: Option<TypeAnn>,
@@ -362,7 +363,7 @@ pub struct VariableDeclarator {
   pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expression {
   NumberLiteral {
     value: f64,
@@ -508,20 +509,20 @@ pub enum Expression {
   },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsxAttribute {
   pub name: String,
   pub value: JsxAttributeValue,
   pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum JsxAttributeValue {
   Expression(Box<Expression>),
   Text(String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum JsxChild {
   Text(String),
   Expression(Box<Expression>),
@@ -567,7 +568,7 @@ impl Expression {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BinaryOp {
   NullishCoalescing,
   LogicalOr,
@@ -595,7 +596,7 @@ pub enum BinaryOp {
   Instanceof,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum UnaryOp {
   Minus,
   Plus,
@@ -608,7 +609,7 @@ pub enum UnaryOp {
   Delete,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum AssignmentOp {
   Assign,
   AddAssign,
@@ -624,7 +625,7 @@ pub enum AssignmentOp {
   OrAssign,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Property {
   pub key: PropertyKey,
   pub value: Box<Expression>,
@@ -633,7 +634,7 @@ pub struct Property {
   pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObjectPatternProperty {
   pub key: PropertyKey,
   pub value: Box<Expression>,
@@ -641,7 +642,7 @@ pub struct ObjectPatternProperty {
   pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PropertyKey {
   Identifier(String),
   String(String),

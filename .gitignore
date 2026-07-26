@@ -6,6 +6,7 @@ Cargo.lock
 .opencode/
 graphify-out/
 .worktrees
+.planning
 
 # IDE
 .vscode/
@@ -21,18 +22,18 @@ npm/tsconfig.tsbuildinfo
 *.ferrite-tsconfig.json
 pnpm-lock.yaml
 
-
-
 # Build output (root only — npm/bin/*.cjs must stay)
 /*.js
 /*.js.map
+
+# Cache
+.eletrolitic-cache/
 
 # Stale
 error.txt
 out.txt
 info.txt
 .graphifyignore
-
 
 # Test
 test

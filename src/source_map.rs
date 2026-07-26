@@ -1,7 +1,9 @@
 use crate::token::Span;
+use serde::{Deserialize, Serialize};
 
 const BASE64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceMap {
   source_name: String,
   source_content: Option<String>,
@@ -9,7 +11,7 @@ pub struct SourceMap {
   mappings: Vec<Mapping>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Mapping {
   gen_line: usize,
   gen_col: usize,

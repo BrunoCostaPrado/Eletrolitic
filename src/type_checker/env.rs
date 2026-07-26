@@ -1,7 +1,9 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::type_checker::ty::Type;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypeEnv {
   scopes: Vec<HashMap<String, Type>>,
 }

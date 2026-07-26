@@ -1,13 +1,14 @@
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
 use crate::token::Span;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Severity {
   Error,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Diagnostic {
   pub severity: Severity,
   pub code: String,

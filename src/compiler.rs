@@ -2,20 +2,26 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::ast::{Expression, Statement};
+use crate::cache::{Cache, CacheConfig};
 use crate::codegen::Codegen;
 use crate::config::{self, CompilerOptions, ElectroliticConfig};
 use crate::decl_emit;
-use crate::diagnostic::{Severity, SourceFile};
+use crate::diagnostic::{Diagnostic, Severity, SourceFile};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::source_map::SourceMap;
 use crate::type_checker::TypeChecker;
 use crate::type_checker::env::TypeEnv;
+use crate::type_checker::error::TypeError;
 use crate::type_checker::ty::Type;
 
 struct ModuleData {
   program: crate::ast::Program,
   source_file: SourceFile,
+  file_hash: [u8; 32], // cached file content hash for dependency tracking
+  cached_type_env: Option<TypeEnv>,
+  cached_diagnostics: Vec<Diagnostic>,
+  cache_hit: bool,
 }
 
 #[derive(Default)]
@@ -29,6 +35,10 @@ pub struct Compiler {
   out_dir: Option<PathBuf>,
   /// Parsed electrolitic.config (entry, outDir, dts, minify, strict, etc.).
   electrolitic_cfg: Option<ElectroliticConfig>,
+  /// Incremental cache (optional).
+  cache: Option<Cache>,
+  /// Cache configuration.
+  cache_config: Option<CacheConfig>,
 }
 
 impl Compiler {
@@ -37,10 +47,23 @@ impl Compiler {
     Self::default()
   }
 
+  /// Create a new compiler with cache enabled.
+  pub fn with_cache(cache_config: CacheConfig) -> Self {
+    let mut compiler = Self::default();
+    compiler.cache_config = Some(cache_config.clone());
+    compiler.cache = Cache::with_config(cache_config).ok();
+    compiler
+  }
+
   /// Compile entry point, resolving relative imports recursively.
   /// Returns (`out_path`, `js_output`) for each file in dependency order.
   pub fn compile(entry: &str) -> Result<Vec<(String, String)>, Vec<String>> {
     let mut compiler = Self::new();
+    compiler.compile_instance(entry)
+  }
+
+  /// Instance version of compile for cache support.
+  pub fn compile_instance(&mut self, entry: &str) -> Result<Vec<(String, String)>, Vec<String>> {
     let entry_path =
       std::fs::canonicalize(entry).map_err(|e| vec![format!("Cannot resolve '{entry}': {e}")])?;
     // Load electrolitic.config.ts/js/json (walk up from entry's directory)
@@ -48,9 +71,9 @@ impl Compiler {
     while let Some(ref dir) = search_dir {
       if let Some((cfg, cfg_dir)) = config::load_electrolitic_config(dir) {
         if let Some(out) = &cfg.out_dir {
-          compiler.out_dir = Some(cfg_dir.join(out));
+          self.out_dir = Some(cfg_dir.join(out));
         }
-        compiler.electrolitic_cfg = Some(cfg);
+        self.electrolitic_cfg = Some(cfg);
         break;
       }
       if !search_dir.as_mut().unwrap().pop() {
@@ -60,53 +83,55 @@ impl Compiler {
     // Load tsconfig.json (walk up from entry point's directory)
     if let Some(dir) = entry_path.parent() {
       let (opts, found_dir) = config::load_tsconfig(dir)?;
-      compiler.options = opts;
-      compiler.root_dir = found_dir;
+      self.options = opts;
+      self.root_dir = found_dir;
     }
     // Electrolitic config overrides tsconfig settings
-    if let Some(ref cfg) = compiler.electrolitic_cfg {
+    if let Some(ref cfg) = self.electrolitic_cfg {
       if let Some(ref t) = cfg.target {
-        compiler.options.target = Some(t.clone());
+        self.options.target = Some(t.clone());
       }
       if let Some(s) = cfg.strict {
-        compiler.options.strict = Some(s);
+        self.options.strict = Some(s);
       }
       if let Some(ref m) = cfg.module {
-        compiler.options.module = Some(m.clone());
+        self.options.module = Some(m.clone());
       }
       if let Some(ref mr) = cfg.module_resolution {
-        compiler.options.module_resolution = Some(mr.clone());
+        self.options.module_resolution = Some(mr.clone());
       }
       if let Some(ref l) = cfg.lib {
-        compiler.options.lib = Some(l.clone());
+        self.options.lib = Some(l.clone());
       }
       if let Some(ref p) = cfg.paths {
-        compiler.options.paths = Some(p.clone());
+        self.options.paths = Some(p.clone());
       }
       if let Some(ref bu) = cfg.base_url {
-        compiler.options.base_url = Some(bu.clone());
+        self.options.base_url = Some(bu.clone());
       }
       if let Some(ref j) = cfg.jsx {
-        compiler.options.jsx = Some(j.clone());
+        self.options.jsx = Some(j.clone());
       }
       if let Some(ref jf) = cfg.jsx_factory {
-        compiler.options.jsx_factory = Some(jf.clone());
+        self.options.jsx_factory = Some(jf.clone());
       }
       if let Some(ref jff) = cfg.jsx_fragment_factory {
-        compiler.options.jsx_fragment_factory = Some(jff.clone());
+        self.options.jsx_fragment_factory = Some(jff.clone());
       }
       if let Some(ed) = cfg.experimental_decorators {
-        compiler.options.experimental_decorators = Some(ed);
+        self.options.experimental_decorators = Some(ed);
       }
       if let Some(ei) = cfg.es_module_interop {
-        compiler.options.es_module_interop = Some(ei);
+        self.options.es_module_interop = Some(ei);
       }
       if let Some(asdi) = cfg.allow_synthetic_default_imports {
-        compiler.options.allow_synthetic_default_imports = Some(asdi);
+        self.options.allow_synthetic_default_imports = Some(asdi);
       }
     }
-    compiler.parse_recursive(&entry_path)?;
-    compiler.type_check_all()
+    // Cache key includes file hash + config hash + dep hashes, so changes naturally miss.
+    // No need to explicitly invalidate — that would clear the cache on every run.
+    self.parse_recursive(&entry_path)?;
+    self.type_check_all()
   }
 
   /// Compile with a specific tsconfig.json path.
@@ -115,18 +140,28 @@ impl Compiler {
     tsconfig_path: &str,
   ) -> Result<Vec<(String, String)>, Vec<String>> {
     let mut compiler = Self::new();
+    compiler.compile_with_tsconfig_instance(entry, tsconfig_path)
+  }
+
+  /// Compile with a specific tsconfig.json path (instance method for cache support).
+  pub fn compile_with_tsconfig_instance(
+    &mut self,
+    entry: &str,
+    tsconfig_path: &str,
+  ) -> Result<Vec<(String, String)>, Vec<String>> {
     let entry_path =
       std::fs::canonicalize(entry).map_err(|e| vec![format!("Cannot resolve '{entry}': {e}")])?;
     let tc_path = std::fs::canonicalize(tsconfig_path)
       .map_err(|e| vec![format!("Cannot resolve tsconfig: {e}")])?;
     let content =
       std::fs::read_to_string(&tc_path).map_err(|e| vec![format!("Cannot read tsconfig: {e}")])?;
-    compiler.options = config::parse_tsconfig(&content)?;
+    self.options = config::parse_tsconfig(&content)?;
     if let Some(dir) = entry_path.parent() {
-      compiler.root_dir = dir.to_path_buf();
+      self.root_dir = dir.to_path_buf();
     }
-    compiler.parse_recursive(&entry_path)?;
-    compiler.type_check_all()
+    // Cache key includes file hash + config hash + dep hashes, so changes naturally miss.
+    self.parse_recursive(&entry_path)?;
+    self.type_check_all()
   }
 
   /// Resolve an import source string to a filesystem path using tsconfig paths/baseUrl.
@@ -153,7 +188,11 @@ impl Compiler {
     let key = path.to_string_lossy().to_string();
     let source =
       std::fs::read_to_string(path).map_err(|e| vec![format!("Cannot read '{key}': {e}")])?;
-    let source_file = SourceFile::new(key, source.clone());
+    let file_hash = crate::cache::key::hash_content(&source);
+
+    // Parse first to get imports for dependency tracking
+    let key_clone = key.clone();
+    let source_file = SourceFile::new(key_clone, source.clone());
     let mut lexer = Lexer::new(&source);
     let tokens = lexer.tokenize().to_vec();
     let lex_diags = lexer.into_diagnostics();
@@ -195,8 +234,68 @@ impl Compiler {
       }
     }
 
+    // Compute dependency hashes from already-parsed modules
+    let mut dep_hashes = Vec::new();
+    for import_source in &imports {
+      if let Some(import_path) = self.resolve_import(import_source, path) {
+        if let Some((_, data)) = self.modules.iter().find(|(p, _)| p == &import_path) {
+          dep_hashes.push(data.file_hash);
+        }
+      }
+    }
+
+    // Try cache lookup with proper dependency hashes
+    let config_hash = crate::cache::hash_config(&self.options, &self.electrolitic_cfg);
+    let cache_key = crate::cache::build_cache_key(path, &source, &config_hash, &dep_hashes);
+
+    let (cached_program, cached_type_env, cached_diagnostics, cache_hit) =
+      if let Some(cache) = &mut self.cache {
+        match cache.get(&cache_key) {
+          crate::cache::CacheLookup::Hit(cached) => {
+            // Cache hit - use cached AST and type env
+            (cached.ast, Some(cached.type_env), cached.diagnostics, true)
+          }
+          _ => {
+            // Cache miss - store parsed module and continue
+            let source_file = SourceFile::new(path.to_string_lossy().to_string(), source);
+            let module_data = ModuleData {
+              program,
+              source_file: source_file.clone(),
+              file_hash,
+              cached_type_env: None,
+              cached_diagnostics: Vec::new(),
+              cache_hit: false,
+            };
+            self.modules.push((path.to_path_buf(), module_data));
+            return Ok(());
+          }
+        }
+      } else {
+        // No cache - store parsed module and continue
+        let source_file = SourceFile::new(path.to_string_lossy().to_string(), source);
+        let module_data = ModuleData {
+          program,
+          source_file: source_file.clone(),
+          file_hash,
+          cached_type_env: None,
+          cached_diagnostics: Vec::new(),
+          cache_hit: false,
+        };
+        self.modules.push((path.to_path_buf(), module_data));
+        return Ok(());
+      };
+
+    // Cache hit - store module data with cached info
     let source_file = SourceFile::new(path.to_string_lossy().to_string(), source);
-    self.modules.push((path.to_path_buf(), ModuleData { program, source_file }));
+    let module_data = ModuleData {
+      program: cached_program,
+      source_file: source_file.clone(),
+      file_hash,
+      cached_type_env,
+      cached_diagnostics,
+      cache_hit,
+    };
+    self.modules.push((path.to_path_buf(), module_data));
     Ok(())
   }
 
@@ -213,29 +312,55 @@ impl Compiler {
     // Modules are in dependency order (deps first) from parse_recursive's DFS.
     let module_count = self.modules.len();
     for i in 0..module_count {
-      let (path, program, source_file) = {
+      let (path, program, source_file, cached_type_env, cached_diagnostics, cache_hit) = {
         let (path, data) = &self.modules[i];
-        (path.clone(), data.program.clone(), data.source_file.clone())
+        (
+          path.clone(),
+          data.program.clone(),
+          data.source_file.clone(),
+          data.cached_type_env.clone(),
+          data.cached_diagnostics.clone(),
+          data.cache_hit,
+        )
       };
 
       checker.current_module.clone_from(&path);
 
-      let mut env = TypeEnv::new();
-      checker.errors.clear();
-      checker.narrowed.clear();
-      checker.check(&program, &mut env);
+      let env = if cache_hit {
+        // Cache hit - use cached type environment
+        cached_type_env.unwrap_or_else(TypeEnv::new)
+      } else {
+        // Cache miss - run type checker
+        let mut env = TypeEnv::new();
+        checker.errors.clear();
+        checker.narrowed.clear();
+        checker.check(&program, &mut env);
 
-      // Report errors with file info + source context
-      for err in &checker.errors {
-        let span = err.span();
-        all_errors.push(source_file.format_error("E0001", &format!("{err}"), span));
-      }
+        // Report errors with file info + source context
+        for err in &checker.errors {
+          let span = err.span();
+          all_errors.push(source_file.format_error("E0001", &format!("{err}"), span));
+        }
 
-      if all_errors.is_empty() {
-        // Collect exports for cross-file resolution
-        let exports = Self::collect_exports_static(&program, &env);
-        let key = path.to_string_lossy().to_string();
-        checker.module_registry.insert(key, exports);
+        // Add cached diagnostics (parse errors) if any
+        for diag in &cached_diagnostics {
+          let span = diag.span;
+          all_errors.push(source_file.format_error(&diag.code, &diag.message, span));
+        }
+
+        // Store type env for cache after successful check
+        if all_errors.is_empty() {
+          // Collect exports for cross-file resolution
+          let exports = Self::collect_exports_static(&program, &env);
+          let key = path.to_string_lossy().to_string();
+          checker.module_registry.insert(key, exports);
+        }
+
+        env
+      };
+
+      if !all_errors.is_empty() {
+        continue;
       }
 
       // Codegen with source map
@@ -291,6 +416,49 @@ impl Compiler {
         };
         outputs.push((dts_path.to_string_lossy().to_string(), dts));
       }
+
+      // Store in cache on cache miss after successful type-check
+      if !cache_hit && all_errors.is_empty() {
+        // Compute dep_hashes before borrowing cache mutably
+        let mut dep_hashes = Vec::new();
+        let imports: Vec<String> = program
+          .body
+          .iter()
+          .filter_map(|stmt| {
+            if let Statement::ImportDeclaration { source, .. } = stmt {
+              return Some(source.clone());
+            }
+            None
+          })
+          .collect();
+        for import_source in &imports {
+          if let Some(import_path) = self.resolve_import(import_source, &path) {
+            if let Some((_, data)) = self.modules.iter().find(|(p, _)| p == &import_path) {
+              dep_hashes.push(data.file_hash);
+            }
+          }
+        }
+
+        if let Some(cache) = &mut self.cache {
+          let config_hash = crate::cache::hash_config(&self.options, &self.electrolitic_cfg);
+          let cache_key =
+            crate::cache::build_cache_key(&path, &source_file.source, &config_hash, &dep_hashes);
+          let diagnostics: Vec<Diagnostic> =
+            checker.errors.iter().map(|e| type_error_to_diagnostic(e, &source_file)).collect();
+          let cached_module = crate::cache::serialize::CachedModule {
+            key: cache_key.clone(),
+            ast: program.clone(),
+            type_env: env.clone(),
+            diagnostics,
+            source_map: None,
+            timestamp: std::time::SystemTime::now()
+              .duration_since(std::time::UNIX_EPOCH)
+              .unwrap_or_default()
+              .as_millis() as u64,
+          };
+          let _ = cache.put(cache_key, cached_module);
+        }
+      }
     }
 
     // Write registry back
@@ -336,6 +504,11 @@ impl Compiler {
       _ => None,
     }
   }
+}
+
+/// Convert TypeError to Diagnostic for caching.
+fn type_error_to_diagnostic(err: &TypeError, _source_file: &SourceFile) -> Diagnostic {
+  Diagnostic::error("E0001", err.to_string(), err.span())
 }
 
 /// Compute relative path from `base` to `path`.

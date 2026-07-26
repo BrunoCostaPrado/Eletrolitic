@@ -1,7 +1,8 @@
 use crate::ast::LiteralValue;
 use crate::ast::TypeAnn;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Type {
   Number,
   String,

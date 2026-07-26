@@ -15,6 +15,7 @@
 )]
 
 pub mod ast;
+pub mod cache;
 pub mod codegen;
 pub mod compiler;
 pub mod config;

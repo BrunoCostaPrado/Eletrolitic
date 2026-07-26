@@ -3,6 +3,18 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+/// Cache configuration.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheConfig {
+  /// Enable incremental cache (default: false in config, but CLI --cache enables it).
+  pub enabled: Option<bool>,
+  /// Cache directory (default: .eletrolitic-cache in project root).
+  pub cache_dir: Option<String>,
+  /// Maximum cache size in bytes (default: 500MB).
+  pub max_size: Option<u64>,
+}
+
 /// Electrolitic build config (from electrolitic.config.ts / electrolitic.config.json).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,6 +28,8 @@ pub struct ElectroliticConfig {
   pub clean: Option<bool>,
   pub splitting: Option<bool>,
   pub strict: Option<bool>,
+  /// Cache configuration.
+  pub cache: Option<CacheConfig>,
   // ── tsconfig overrides ────────────────────────────────────────
   pub module: Option<String>,
   pub module_resolution: Option<String>,
