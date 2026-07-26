@@ -223,8 +223,11 @@ mod tests {
     };
 
     let serialized: SerializedCachedModule = module.into();
-    let encoded = bincode::serialize(&serialized).unwrap();
-    let decoded: SerializedCachedModule = bincode::deserialize(&encoded).unwrap();
+    let encoded = bincode::serde::encode_to_vec(&serialized, bincode::config::standard()).unwrap();
+    let decoded: SerializedCachedModule =
+      bincode::serde::decode_from_slice(&encoded, bincode::config::standard())
+        .map(|(v, _)| v)
+        .unwrap();
     let deserialized: CachedModule = decoded.into();
 
     assert_eq!(deserialized.key, key);

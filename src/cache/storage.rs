@@ -13,7 +13,8 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use bincode;
+use bincode::config::standard;
+use bincode::serde::{decode_from_slice, encode_to_vec};
 use hex;
 use serde::{Deserialize, Serialize};
 
@@ -111,8 +112,9 @@ impl CacheStorage {
     }
 
     // Deserialize SerializedCachedModule then convert
-    let serialized: SerializedCachedModule =
-      bincode::deserialize(data).map_err(|e| format!("deserialize: {e}"))?;
+    let serialized: SerializedCachedModule = decode_from_slice(data, standard())
+      .map(|(v, _)| v)
+      .map_err(|e| format!("deserialize: {e}"))?;
     let module = serialized.into_cached_module();
 
     // Verify key matches
@@ -130,7 +132,7 @@ impl CacheStorage {
 
     // Serialize via SerializedCachedModule
     let serialized = SerializedCachedModule::from(module.clone());
-    let data = bincode::serialize(&serialized).map_err(|e| format!("serialize: {e}"))?;
+    let data = encode_to_vec(&serialized, standard()).map_err(|e| format!("serialize: {e}"))?;
 
     // Add CRC32 header
     let crc = crc32fast::hash(&data);
