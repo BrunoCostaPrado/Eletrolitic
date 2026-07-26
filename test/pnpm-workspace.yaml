@@ -1,3 +1,5 @@
 allowBuilds:
   better-sqlite3: false
   esbuild: false
+minimumReleaseAgeExclude:
+  - '@redbruno/eletrolitic@0.1.1'

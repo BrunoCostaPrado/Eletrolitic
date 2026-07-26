@@ -2,6 +2,8 @@
 
 TypeScript-to-JavaScript compiler written in Rust. Drop-in replacement for `tsc` — outputs `.js`, `.js.map`, and `.d.ts` files with automatic config detection.
 
+[![npm version](https://img.shields.io/npm/v/@redbruno/eletrolitic)](https://www.npmjs.com/package/@redbruno/eletrolitic)
+
 ## Install
 
 ```bash
@@ -11,7 +13,7 @@ cargo install --path .
 Or use the npm package (ships the binary):
 
 ```bash
-npm install eletrolitic
+npm install @redbruno/eletrolitic
 ```
 
 ## Usage
@@ -173,7 +175,45 @@ Source (.ts) → Lexer → Parser → AST → Type Checker → Codegen → JS + 
 - **Incremental error recovery** — Parser continues after errors, reports multiple issues per file
 - **Zero-copy tokens** — Lexer borrows source string, no allocation per token
 
-## Performance
+### Incremental cache
+
+eletrolitic caches parsed AST + type-check results keyed by file content, config, and transitive dependencies. Re-runs skip parse + type-check on cache hit.
+
+```bash
+# Enable cache (default: project-local .eletrolitic-cache/)
+eletrolitic src/index.ts --cache
+
+# Disable cache
+eletrolitic src/index.ts --no-cache
+
+# Custom cache dir
+eletrolitic src/index.ts --cache-dir /path/to/cache
+
+# Cache management
+eletrolitic cache stats    # Show entry count, size
+eletrolitic cache clear    # Wipe cache
+eletrolitic cache dir      # Print cache directory
+```
+
+**Config-driven** (in `eletrolitic.config.ts`):
+
+```ts
+export default defineConfig({
+  cache: {
+    enabled: true,      // default: false
+    cache_dir: ".eletrolitic-cache",  // default: project root
+    max_size: 100_000_000,  // bytes, default: 100MB
+  },
+})
+```
+
+Cache key = `blake3(file_content + config_hash + dep_hashes)`. On hit: AST + type-env + diagnostics loaded from disk → straight to codegen. On miss: full pipeline runs, result stored atomically.
+
+Invalidation is automatic: any file/config/dep change → new key → cache miss → rebuild. Reverse dep graph tracks which entries depend on a file for targeted invalidation.
+
+* **Storage**: `.eletrolitic-cache/objects/` (sharded by key prefix), `index.json` (CRC32 + timestamp + deps)
+* **Serialization**: JSON (serde) → bincode (zero-copy decode)
+* **LRU eviction**: `evict_lru(target_bytes)` when `max_size` exceeded
 
 eletrolitic is designed for speed:
 
@@ -195,7 +235,7 @@ Typical performance: ~10-50x faster than `tsc` for single-file compilation.
 | JSX | Yes | Yes |
 | Path aliases | Yes | Yes |
 | Project references | No | Yes |
-| Incremental builds | No | Yes |
+| **Incremental builds** | **Yes** | Yes |
 | Watch mode | No | Yes |
 
 **Use eletrolitic when:** You need fast compilation, are okay with partial type checking, or want a lightweight alternative to tsc.
@@ -227,7 +267,7 @@ cargo fmt           # format
 ### Development setup
 
 ```bash
-git clone https://github.com/your-username/eletrolitic.git
+git clone https://github.com/BrunoCostaPrado/Eletrolitic.git
 cd eletrolitic
 cargo build
 cargo test
