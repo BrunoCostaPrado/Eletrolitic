@@ -14,8 +14,8 @@ export function defineConfig(config: CompilerConfig): CompilerConfig {
 	return config
 }
 
-/** Compile a TypeScript file. Loads ferrite.config.ts if no config passed. */
-export async function ferrite(
+/** Compile a TypeScript file. Loads eletrolitic.config.ts if no config passed. */
+export async function eletrolitic(
 	entry: string,
 	config?: CompilerConfig,
 ): Promise<CompileResult> {

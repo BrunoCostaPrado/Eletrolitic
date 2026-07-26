@@ -1,5 +1,5 @@
 /**
- * Ferrite compiler config types — used by CompilerConfig below.
+ * Eletrolitic compiler config types — used by CompilerConfig below.
  */
 
 /** Runtime platform target. */

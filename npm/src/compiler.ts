@@ -15,13 +15,13 @@ export type { CompilerConfig }
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-/** Load ferrite.config.ts from project root. */
+/** Load eletrolitic.config.ts from project root. */
 export async function loadConfig(): Promise<CompilerConfig | null> {
 	const cwd = process.cwd()
 	for (const name of [
-		"ferrite.config.ts",
-		"ferrite.config.js",
-		"ferrite.config.mjs",
+		"eletrolitic.config.ts",
+		"eletrolitic.config.js",
+		"eletrolitic.config.mjs",
 	]) {
 		const p = resolve(cwd, name)
 		if (!existsSync(p)) continue
@@ -46,14 +46,14 @@ function platformDir(): string {
 
 function findBinary(): string {
 	const ext = platform() === "win32" ? ".exe" : ""
-	const binName = `ferrite${ext}`
+	const binName = `eletrolitic${ext}`
 	const pkgBin = resolve(__dirname, `../bin/${platformDir()}/${binName}`)
 	if (existsSync(pkgBin)) return pkgBin
 	for (const dir of ["../../target/release", "../../target/debug"]) {
 		const p = resolve(__dirname, dir, binName)
 		if (existsSync(p)) return p
 	}
-	return "ferrite"
+	return "eletrolitic"
 }
 
 export interface CompileOutput {
@@ -75,7 +75,7 @@ function toArray(entry: string | string[] | Record<string, string>): string[] {
 
 /**
  * Compile a TypeScript file using the Rust compiler.
- * Loads ferrite.config.ts if no config passed.
+ * Loads eletrolitic.config.ts if no config passed.
  */
 export async function compile(
 	entry?: string,
@@ -94,7 +94,7 @@ export async function compile(
 			ok: false,
 			outputs: [],
 			errors: [
-				"No entry file specified. Pass a file or set entry in ferrite.config.ts",
+				"No entry file specified. Pass a file or set entry in eletrolitic.config.ts",
 			],
 		}
 	}

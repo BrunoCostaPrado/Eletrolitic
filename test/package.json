@@ -10,7 +10,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.4",
-		"@redbruno/eletrolitic": "^0.1.1",
+		"@redbruno/eletrolitic": "^0.2.0",
 		"@types/node": "^26.1.1",
 		"tsx": "^4.19.0",
 		"zod": "^4.4.3"
