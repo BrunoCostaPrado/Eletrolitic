@@ -124,7 +124,7 @@ impl TypeChecker {
           }
           // ponytail: generic inference — collect TypeParam → actual type mappings
           let mut type_bindings: Vec<(String, Type)> = Vec::new();
-          let mut resolved_params = params.clone();
+          let mut resolved_params = params;
           for (i, arg) in arguments.iter().enumerate() {
             let arg_type = self.infer_expression(arg, env);
             if i < resolved_params.len() {
@@ -365,9 +365,9 @@ impl TypeChecker {
   /// Detect simple type guard patterns in if-conditions.
   /// Returns (`variable_name`, `narrowed_type`) if detected.
   pub(crate) fn detect_type_guard(
-    &mut self,
+    &self,
     expr: &Expression,
-    env: &mut TypeEnv,
+    env: &TypeEnv,
   ) -> Option<(String, Type)> {
     match expr {
       // Binary expressions: typeof, instanceof, ===, !==
@@ -458,7 +458,7 @@ impl TypeChecker {
   fn narrow_strict_eq(
     name_expr: &Expression,
     value_expr: &Expression,
-    env: &mut TypeEnv,
+    env: &TypeEnv,
   ) -> Option<(String, Type)> {
     if let Expression::Identifier { name, .. } = name_expr {
       let target_type = match value_expr {
@@ -485,7 +485,7 @@ impl TypeChecker {
   fn narrow_strict_neq(
     name_expr: &Expression,
     value_expr: &Expression,
-    env: &mut TypeEnv,
+    env: &TypeEnv,
   ) -> Option<(String, Type)> {
     if let Expression::Identifier { name, .. } = name_expr {
       let remove_type = match value_expr {

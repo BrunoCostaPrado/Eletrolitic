@@ -2,6 +2,11 @@
 name = "eletrolitic"
 version = "0.1.0"
 edition = "2024"
+description = "TypeScript compiler powered by Rust"
+license = "ISC"
+repository = "https://github.com/BrunoCostaPrado/Eletrolitic"
+keywords = ["typescript", "compiler", "rust"]
+categories = ["development-tools", "compilers"]
 
 [lib]
 name = "eletrolitic"

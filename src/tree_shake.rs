@@ -35,7 +35,15 @@ impl TreeShaker {
           span: *span,
         })
       }
-      Statement::FunctionDeclaration { body, name, params, return_type, is_async, type_params, .. } => {
+      Statement::FunctionDeclaration {
+        body,
+        name,
+        params,
+        return_type,
+        is_async,
+        type_params,
+        ..
+      } => {
         if let Statement::BlockStatement { body: fn_body, span } = body.as_ref() {
           let shaken: Vec<_> = fn_body.iter().filter_map(Self::shake_stmt).collect();
           if shaken == *fn_body {

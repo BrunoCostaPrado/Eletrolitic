@@ -249,7 +249,8 @@ impl Compiler {
       let map_dir = map_path.parent().unwrap_or(Path::new("."));
       let source_rel = diff_paths(&path, map_dir);
       let source_name = source_rel.to_string_lossy().replace('\\', "/");
-      let mut source_map = SourceMap::new(&source_file.source, &source_name, Some(&source_file.source));
+      let mut source_map =
+        SourceMap::new(&source_file.source, &source_name, Some(&source_file.source));
       let mut codegen = Codegen::new();
       if self.electrolitic_cfg.as_ref().and_then(|c| c.format.as_deref()) == Some("cjs") {
         codegen.cjs = true;

@@ -3,8 +3,13 @@ use eletrolitic::config;
 use std::time::Instant;
 
 /// Get or create an ElectroliticConfig, returning a mutable reference.
-fn ensure_cfg<'a>(cfg: &'a mut Option<(eletrolitic::config::ElectroliticConfig, std::path::PathBuf)>, cwd: &std::path::Path) -> &'a mut eletrolitic::config::ElectroliticConfig {
-  &mut cfg.get_or_insert_with(|| (eletrolitic::config::ElectroliticConfig::default(), cwd.to_path_buf())).0
+fn ensure_cfg<'a>(
+  cfg: &'a mut Option<(eletrolitic::config::ElectroliticConfig, std::path::PathBuf)>,
+  cwd: &std::path::Path,
+) -> &'a mut eletrolitic::config::ElectroliticConfig {
+  &mut cfg
+    .get_or_insert_with(|| (eletrolitic::config::ElectroliticConfig::default(), cwd.to_path_buf()))
+    .0
 }
 
 fn fmt_size(bytes: usize) -> String {
