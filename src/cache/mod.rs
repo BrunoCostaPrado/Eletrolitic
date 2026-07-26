@@ -54,9 +54,10 @@ impl CacheStats {
 
 /// Result of a cache lookup.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum CacheLookup {
   /// Cache hit - return cached module.
-  Hit(CachedModule),
+  Hit(Box<CachedModule>),
   /// Cache miss - need to recompile.
   Miss,
   /// Cache disabled.
@@ -100,7 +101,7 @@ impl Cache {
         self.stats.hits += 1;
         self.stats.entries = self.storage.entry_count();
         self.stats.total_bytes = self.storage.total_size();
-        CacheLookup::Hit(module)
+        CacheLookup::Hit(Box::new(module))
       }
       Ok(None) => {
         self.stats.misses += 1;

@@ -25,12 +25,12 @@ fn handle_cache_subcommand(cache_subcommand: &str, cache_dir: Option<String>, ca
   }
   let cache_config = {
     let mut cfg = ElectroliticCacheConfig::default();
-    if let Some((ref ecfg, _)) = eletrolitic_cfg {
-      if let Some(ref ccfg) = ecfg.cache {
-        cfg.enabled = ccfg.enabled;
-        cfg.cache_dir = ccfg.cache_dir.clone();
-        cfg.max_size = ccfg.max_size;
-      }
+    if let Some((ref ecfg, _)) = eletrolitic_cfg
+      && let Some(ref ccfg) = ecfg.cache
+    {
+      cfg.enabled = ccfg.enabled;
+      cfg.cache_dir = ccfg.cache_dir.clone();
+      cfg.max_size = ccfg.max_size;
     }
     if cache_dir.is_some() {
       cfg.cache_dir = cache_dir.clone();
@@ -174,18 +174,18 @@ fn main() {
     eletrolitic_cfg = Some((cfg, dir));
   } else if let Some(ref entry_path) = entry {
     // Try entry's directory
-    if let Some(parent) = std::path::Path::new(entry_path).parent() {
-      if let Some((cfg, dir)) = config::load_electrolitic_config(parent) {
-        eprintln!("\x1b[2mℹ  eletrolitic\x1b[0m");
-        for name in &["eletrolitic.config.ts", "eletrolitic.config.js", "eletrolitic.config.json"] {
-          if dir.join(name).exists() {
-            eprintln!("\x1b[2mℹ  config file: {}\x1b[0m", dir.join(name).display());
-            break;
-          }
+    if let Some(parent) = std::path::Path::new(entry_path).parent()
+      && let Some((cfg, dir)) = config::load_electrolitic_config(parent)
+    {
+      eprintln!("\x1b[2mℹ  eletrolitic\x1b[0m");
+      for name in &["eletrolitic.config.ts", "eletrolitic.config.js", "eletrolitic.config.json"] {
+        if dir.join(name).exists() {
+          eprintln!("\x1b[2mℹ  config file: {}\x1b[0m", dir.join(name).display());
+          break;
         }
-        cfg_dir = dir.clone();
-        eletrolitic_cfg = Some((cfg, dir));
       }
+      cfg_dir = dir.clone();
+      eletrolitic_cfg = Some((cfg, dir));
     }
   }
 
@@ -222,12 +222,12 @@ fn main() {
   // Build cache config: config file -> CLI flags
   let cache_config = {
     let mut cfg = ElectroliticCacheConfig::default();
-    if let Some((ref ecfg, _)) = eletrolitic_cfg {
-      if let Some(ref ccfg) = ecfg.cache {
-        cfg.enabled = ccfg.enabled;
-        cfg.cache_dir = ccfg.cache_dir.clone();
-        cfg.max_size = ccfg.max_size;
-      }
+    if let Some((ref ecfg, _)) = eletrolitic_cfg
+      && let Some(ref ccfg) = ecfg.cache
+    {
+      cfg.enabled = ccfg.enabled;
+      cfg.cache_dir = ccfg.cache_dir.clone();
+      cfg.max_size = ccfg.max_size;
     }
     // CLI overrides
     if cache_dir.is_some() {

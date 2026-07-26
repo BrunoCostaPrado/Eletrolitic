@@ -50,8 +50,8 @@ impl Compiler {
   /// Create a new compiler with cache enabled.
   pub fn with_cache(cache_config: CacheConfig) -> Self {
     let mut compiler = Self::default();
-    compiler.cache_config = Some(cache_config.clone());
-    compiler.cache = Cache::with_config(cache_config).ok();
+    compiler.cache_config = Some(cache_config);
+    compiler.cache = Cache::with_config(compiler.cache_config.as_ref().unwrap().clone()).ok();
     compiler
   }
 
@@ -237,10 +237,10 @@ impl Compiler {
     // Compute dependency hashes from already-parsed modules
     let mut dep_hashes = Vec::new();
     for import_source in &imports {
-      if let Some(import_path) = self.resolve_import(import_source, path) {
-        if let Some((_, data)) = self.modules.iter().find(|(p, _)| p == &import_path) {
-          dep_hashes.push(data.file_hash);
-        }
+      if let Some(import_path) = self.resolve_import(import_source, path)
+        && let Some((_, data)) = self.modules.iter().find(|(p, _)| p == &import_path)
+      {
+        dep_hashes.push(data.file_hash);
       }
     }
 
@@ -432,10 +432,10 @@ impl Compiler {
           })
           .collect();
         for import_source in &imports {
-          if let Some(import_path) = self.resolve_import(import_source, &path) {
-            if let Some((_, data)) = self.modules.iter().find(|(p, _)| p == &import_path) {
-              dep_hashes.push(data.file_hash);
-            }
+          if let Some(import_path) = self.resolve_import(import_source, &path)
+            && let Some((_, data)) = self.modules.iter().find(|(p, _)| p == &import_path)
+          {
+            dep_hashes.push(data.file_hash);
           }
         }
 
