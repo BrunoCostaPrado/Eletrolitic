@@ -18,7 +18,6 @@
 	"license": "ISC",
 	"author": "RedBruno",
 	"type": "module",
-	"packageManager": "pnpm@9.15.9",
 	"exports": {
 		".": {
 			"types": "./dist/eletrolitic.d.mts",

@@ -90,13 +90,10 @@ jobs:
       attestations: write  # required for provenance
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-          cache: pnpm
-          cache-dependency-path: npm/pnpm-lock.yaml
       # Download each platform binary into its own subdir
       - uses: actions/download-artifact@v4
         with:
@@ -118,9 +115,9 @@ jobs:
         run: chmod +x npm/bin/linux-x64/* npm/bin/darwin-x64/* npm/bin/darwin-arm64/*
       - name: Build npm package
         working-directory: npm
-        run: pnpm install --frozen-lockfile && pnpm build
+        run: npm install && npm run build
       - name: Publish (First time, using token)
         working-directory: npm
-        run: pnpm publish --access public
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

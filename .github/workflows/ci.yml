@@ -32,18 +32,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: npm/pnpm-lock.yaml
 
       - name: Install
         working-directory: npm
-        run: pnpm install --frozen-lockfile
+        run: npm install
 
       - name: Typecheck
         working-directory: npm
-        run: pnpm typecheck
+        run: npm run typecheck

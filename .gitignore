@@ -19,10 +19,9 @@ node_modules/
 npm/dist/
 npm/tsconfig.tsbuildinfo
 *.ferrite-tsconfig.json
+pnpm-lock.yaml
 
-# Python
-__pycache__/
-*.pyc
+
 
 # Build output (root only — npm/bin/*.cjs must stay)
 /*.js
@@ -33,6 +32,7 @@ error.txt
 out.txt
 info.txt
 .graphifyignore
+
 
 # Test
 test
