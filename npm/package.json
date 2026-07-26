@@ -25,6 +25,7 @@
 		}
 	},
 	"main": "dist/eletrolitic.mjs",
+	"module": "dist/eletrolitic.mjs",
 	"types": "dist/eletrolitic.d.mts",
 	"bin": {
 		"eletrolitic": "bin/eletrolitic.cjs"
