@@ -4,7 +4,7 @@ pub struct TreeShaker;
 
 impl TreeShaker {
   pub fn shake(program: &Program) -> Program {
-    Program { body: program.body.iter().filter_map(|stmt| Self::shake_stmt(stmt)).collect() }
+    Program { body: program.body.iter().filter_map(Self::shake_stmt).collect() }
   }
 
   fn shake_stmt(stmt: &Statement) -> Option<Statement> {
@@ -25,7 +25,7 @@ impl TreeShaker {
         })
       }
       Statement::BlockStatement { body, span } => Some(Statement::BlockStatement {
-        body: body.iter().filter_map(|s| Self::shake_stmt(s)).collect(),
+        body: body.iter().filter_map(Self::shake_stmt).collect(),
         span: *span,
       }),
       Statement::ExportDeclaration { declaration, is_default, span } => {
@@ -35,34 +35,19 @@ impl TreeShaker {
           span: *span,
         })
       }
-      Statement::FunctionDeclaration { body, .. } => {
+      Statement::FunctionDeclaration { body, name, params, return_type, is_async, type_params, .. } => {
         if let Statement::BlockStatement { body: fn_body, span } = body.as_ref() {
-          let shaken: Vec<_> = fn_body.iter().filter_map(|s| Self::shake_stmt(s)).collect();
+          let shaken: Vec<_> = fn_body.iter().filter_map(Self::shake_stmt).collect();
           if shaken == *fn_body {
             return Some(stmt.clone());
           }
           Some(Statement::FunctionDeclaration {
-            name: match stmt {
-              Statement::FunctionDeclaration { name, .. } => name.clone(),
-              _ => unreachable!(),
-            },
-            params: match stmt {
-              Statement::FunctionDeclaration { params, .. } => params.clone(),
-              _ => unreachable!(),
-            },
-            return_type: match stmt {
-              Statement::FunctionDeclaration { return_type, .. } => return_type.clone(),
-              _ => unreachable!(),
-            },
+            name: name.clone(),
+            params: params.clone(),
+            return_type: return_type.clone(),
             body: Box::new(Statement::BlockStatement { body: shaken, span: *span }),
-            is_async: match stmt {
-              Statement::FunctionDeclaration { is_async, .. } => *is_async,
-              _ => unreachable!(),
-            },
-            type_params: match stmt {
-              Statement::FunctionDeclaration { type_params, .. } => type_params.clone(),
-              _ => unreachable!(),
-            },
+            is_async: *is_async,
+            type_params: type_params.clone(),
             span: *span,
           })
         } else {

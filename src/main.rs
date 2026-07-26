@@ -94,14 +94,12 @@ fn main() {
   }
 
   // If no entry given, get it from eletrolitic config
-  if entry.is_none() {
-    if let Some((ref cfg, _)) = eletrolitic_cfg {
-      if let Some(ref entries) = cfg.entry {
-        if let Some(first) = entries.first() {
-          entry = Some(first.clone());
-        }
-      }
-    }
+  if entry.is_none()
+    && let Some((ref cfg, _)) = eletrolitic_cfg
+    && let Some(ref entries) = cfg.entry
+    && let Some(first) = entries.first()
+  {
+    entry = Some(first.clone());
   }
 
   let Some(entry) = entry else {

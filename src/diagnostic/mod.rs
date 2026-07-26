@@ -82,7 +82,7 @@ impl SourceFile {
     let _ = write!(out, "\n{gutter}{text}");
 
     // Caret line — underline the span on the error line
-    let caret_col = start_col.saturating_sub(1); // 0-based offset into text
+    let _caret_col = start_col.saturating_sub(1); // 0-based offset into text
     let caret_len =
       if end_line == start_line && end_col > start_col { (end_col - start_col).max(1) } else { 1 };
     let prefix = " ".repeat(gutter.len());

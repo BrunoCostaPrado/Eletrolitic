@@ -61,7 +61,7 @@ impl TypeChecker {
           BinaryOp::NullishCoalescing => lt,
         }
       }
-      Expression::UnaryExpression { operator, operand: _, .. } => match operator {
+      Expression::UnaryExpression { operator, .. } => match operator {
         UnaryOp::Minus
         | UnaryOp::Plus
         | UnaryOp::BitwiseNot

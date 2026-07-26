@@ -726,12 +726,12 @@ fn parse_prefix(p: &mut Parser) -> Option<Box<Expression>> {
       if p.peek().kind == TokenKind::Dot {
         p.advance(); // consume '.'
         // Check for 'meta'
-        if let TokenKind::Identifier(n) = &p.peek().kind {
-          if n == "meta" {
-            let meta_span = p.advance().span;
-            let end = meta_span.end;
-            return Some(Box::new(Expression::ImportMeta { span: Span::new(start, end) }));
-          }
+        if let TokenKind::Identifier(n) = &p.peek().kind
+          && n == "meta"
+        {
+          let meta_span = p.advance().span;
+          let end = meta_span.end;
+          return Some(Box::new(Expression::ImportMeta { span: Span::new(start, end) }));
         }
       }
       // import("source") dynamic import

@@ -1335,36 +1335,36 @@ impl Parser {
       return Statement::DeclareModule { name, body, span: Span::new(start, end) };
     }
     // declare namespace Name { ... }
-    if let TokenKind::Identifier(n) = &self.peek().kind {
-      if n == "namespace" {
-        self.advance(); // consume 'namespace'
-        let name = if let TokenKind::Identifier(n) = &self.peek().kind {
-          let n = n.clone();
-          self.advance();
-          n
-        } else {
-          String::new()
-        };
-        let body = if self.peek().kind == TokenKind::OpenBrace {
-          let block = self.parse_block();
-          match block {
-            Statement::BlockStatement { body, .. } => body,
-            _ => {
-              self.diagnostics.push(Diagnostic::error(
-                "E999",
-                "Internal parser error: unexpected state in declare namespace",
-                self.peek().span,
-              ));
-              Vec::new()
-            }
+    if let TokenKind::Identifier(n) = &self.peek().kind
+      && n == "namespace"
+    {
+      self.advance(); // consume 'namespace'
+      let name = if let TokenKind::Identifier(n) = &self.peek().kind {
+        let n = n.clone();
+        self.advance();
+        n
+      } else {
+        String::new()
+      };
+      let body = if self.peek().kind == TokenKind::OpenBrace {
+        let block = self.parse_block();
+        match block {
+          Statement::BlockStatement { body, .. } => body,
+          _ => {
+            self.diagnostics.push(Diagnostic::error(
+              "E999",
+              "Internal parser error: unexpected state in declare namespace",
+              self.peek().span,
+            ));
+            Vec::new()
           }
-        } else {
-          self.maybe_semicolon();
-          Vec::new()
-        };
-        let end = self.last_end();
-        return Statement::DeclareNamespace { name, body, span: Span::new(start, end) };
-      }
+        }
+      } else {
+        self.maybe_semicolon();
+        Vec::new()
+      };
+      let end = self.last_end();
+      return Statement::DeclareNamespace { name, body, span: Span::new(start, end) };
     }
     // Fallback: just skip remaining statement
     let decl = self.parse_statement().unwrap_or_else(|| Statement::ExpressionStatement {

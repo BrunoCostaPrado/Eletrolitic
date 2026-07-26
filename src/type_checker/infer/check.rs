@@ -240,7 +240,7 @@ impl TypeChecker {
         };
         env.push_scope();
         if let Expression::Identifier { name, .. } = left {
-          let _ = env.declare(&name, elem_type);
+          let _ = env.declare(name, elem_type);
         }
         self.check_statement(body, env);
         env.pop_scope();

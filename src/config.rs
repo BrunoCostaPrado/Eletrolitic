@@ -210,7 +210,7 @@ fn extract_define_config(content: &str) -> Option<String> {
   let start = content.find(start_marker)? + start_marker.len();
   // Find matching `}` — count braces
   let mut depth = 1i32;
-  let bytes = content[start..].as_bytes();
+  let bytes = &content.as_bytes()[start..];
   for (i, &b) in bytes.iter().enumerate() {
     match b {
       b'{' => depth += 1,
