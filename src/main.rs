@@ -111,7 +111,7 @@ fn main() {
         std::process::exit(0);
       }
       "--version" | "-V" => {
-        eprintln!("eletrolitic 0.1.0");
+        eprintln!("eletrolitic {}", env!("CARGO_PKG_VERSION"));
         std::process::exit(0);
       }
       "--tsconfig" => {
